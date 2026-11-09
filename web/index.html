@@ -108,7 +108,7 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
-const ANCHO = 900, ALTO = 600;           // tamaño lógico del mundo
+const ANCHO = 540, ALTO = 960;           // tamaño lógico del mundo (vertical 9:16)
 const SANGRE_MAX = 100;
 const PERDIDA_SANGRE_SEG = 3.5;          // sangre perdida por segundo
 const SANGRE_POR_MORDIDA = 25;
@@ -149,7 +149,7 @@ const ctx = lienzo.getContext('2d');
 let escala = 1;                          // píxeles CSS por unidad del mundo
 
 function ajustarTamano() {
-  // Mayor tamaño que quepa manteniendo la proporción 3:2
+  // Mayor tamaño que quepa manteniendo la proporción 9:16
   const cont = document.getElementById('escena');
   const estilo = getComputedStyle(cont);
   const disponibleX = cont.clientWidth - parseFloat(estilo.paddingLeft) - parseFloat(estilo.paddingRight);
@@ -267,7 +267,7 @@ function dibujarEfectos() {
 let decorado = [];
 function generarDecorado() {
   decorado = [];
-  for (let i = 0; i < 14; i++) decorado.push({ tipo: 'tumba', x: azar(30, ANCHO - 30), y: azar(90, ALTO - 30), g: azar(-0.15, 0.15) });
+  for (let i = 0; i < 16; i++) decorado.push({ tipo: 'tumba', x: azar(30, ANCHO - 30), y: azar(130, ALTO - 30), g: azar(-0.15, 0.15) });
   for (let i = 0; i < 7; i++) decorado.push({ tipo: 'arbol', x: azar(0, ANCHO), y: azar(0, ALTO), r: azar(26, 44) });
   for (let i = 0; i < 40; i++) decorado.push({ tipo: 'pasto', x: azar(0, ANCHO), y: azar(0, ALTO) });
   decorado.sort((a, b) => a.y - b.y);    // dibujar de atrás hacia delante
@@ -306,9 +306,9 @@ function dibujarFondo(t) {
     }
   }
   // Niebla flotante sutil
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 7; i++) {
     const x = ((t * 12 + i * 260) % (ANCHO + 300)) - 150;
-    const y = 120 + i * 120;
+    const y = 150 + i * 120;
     const n = ctx.createRadialGradient(x, y, 0, x, y, 150);
     n.addColorStop(0, 'rgba(180,190,210,.06)'); n.addColorStop(1, 'rgba(180,190,210,0)');
     ctx.fillStyle = n; ctx.fillRect(x - 150, y - 150, 300, 300);
@@ -416,7 +416,7 @@ class Vampiro {
 class Aldeano {
   static RADIO = 11; static VEL = 85; static VEL_HUIDA = 145; static MIEDO = 140;
   constructor() {
-    this.pos = { x: azar(40, ANCHO - 40), y: azar(90, ALTO - 40) };
+    this.pos = { x: azar(40, ANCHO - 40), y: azar(130, ALTO - 40) };
     const a = azar(0, Math.PI * 2);
     this.dir = { x: Math.cos(a), y: Math.sin(a) };
     this.tCambio = azar(1, 3);           // cuándo cambiar de rumbo
@@ -640,13 +640,13 @@ function dibujarHud() {
   texto('Sangre', 240, 28, 15, '#efe9e1', 'cuerpo', 'left');
   barra(20, 44, 210, 12, cargaNiebla / MORDIDAS_PARA_NIEBLA, '#9b2fd0');
   texto(cargaNiebla >= MORDIDAS_PARA_NIEBLA ? 'Niebla lista' : 'Niebla', 240, 50, 13, '#d9a6ff', 'cuerpo', 'left');
-  texto(`Mordidas ${mordidas}  ·  Cazadores ${eliminados}  ·  Puntos ${puntaje()}`, 20, 76, 14, '#a9a3c2', 'cuerpo', 'left');
+  texto(`Mordidas ${mordidas}  ·  Cazadores ${eliminados}  ·  Puntos ${puntaje()}`, 20, 100, 14, '#a9a3c2', 'cuerpo', 'left');
 
   // Arriba a la derecha: noche actual y cuenta regresiva al amanecer (con sol que sube)
   const restante = Math.max(0, Math.ceil(DURACION_NOCHE - tiempoNoche));
   texto(`Noche ${noche}`, ANCHO - 20, 28, 30, '#e8e4c9', 'display', 'right');
   texto(`Amanecer en ${restante} s`, ANCHO - 20, 58, 14, restante <= 10 ? '#ffcf6b' : '#a9a3c2', 'cuerpo', 'right');
-  barra(ANCHO - 180, 70, 160, 8, tiempoNoche / DURACION_NOCHE, '#ffb347');
+  barra(ANCHO - 150, 70, 130, 8, tiempoNoche / DURACION_NOCHE, '#ffb347');
 }
 
 function dibujarJoystick() {             // anillo y pulgar del joystick virtual
@@ -677,14 +677,14 @@ function luzAmanecer() {
 function leyenda(y) {
   const items = [
     ['Tú', () => { const v = new Vampiro(); v.pos = { x: 0, y: 0 }; return v; }],
-    ['Aldeano: muérdelo', () => { const a = new Aldeano(); a.pos = { x: 0, y: 0 }; a.ropa = '#3f6fc4'; return a; }],
-    ['Cazador: evítalo o elimínalo', () => { const c = new Cazador(0); c.pos = { x: 0, y: 0 }; c.mira = { x: 1, y: 0 }; return c; }],
+    ['Aldeano\nmuérdelo', () => { const a = new Aldeano(); a.pos = { x: 0, y: 0 }; a.ropa = '#3f6fc4'; return a; }],
+    ['Cazador\nevítalo o elimínalo', () => { const c = new Cazador(0); c.pos = { x: 0, y: 0 }; c.mira = { x: 1, y: 0 }; return c; }],
   ];
   items.forEach(([nombre, crear], i) => {
-    const cx = ANCHO / 2 + (i - 1) * 230;
+    const cx = ANCHO / 2 + (i - 1) * 170;
     const e = crear();
     ctx.save(); ctx.translate(cx, y); e.dibujar(0); ctx.restore();
-    texto(nombre, cx, y + 44, 15, '#efe9e1');
+    nombre.split('\n').forEach((l, j) => texto(l, cx, y + 44 + j * 20, 15, j ? '#a9a3c2' : '#efe9e1'));
   });
 }
 
@@ -692,14 +692,19 @@ function dibujar(t) {
   dibujarFondo(t);
   if (estado === 'inicio') {
     velo();
-    texto('Vampiro', ANCHO / 2, 110, 100, '#c8142a', 'display');
-    texto('Sobrevive cada noche hasta el amanecer.', ANCHO / 2, 190, 21, '#efe9e1');
-    leyenda(265);
-    texto('Murciélago: impulso que atraviesa y elimina cazadores (cuesta sangre)', ANCHO / 2, 368, 16, '#ff8a98');
-    texto('Niebla roja: muerde 4 aldeanos y elimina a todos los cazadores cercanos', ANCHO / 2, 396, 16, '#d9a6ff');
-    texto('Arrastra el dedo para moverte  ·  teclado: flechas, ESPACIO y E', ANCHO / 2, 432, 14, '#a9a3c2');
-    texto('Toca para empezar', ANCHO / 2, 500, 32, '#e8e4c9', 'display');
-    if (mejor) texto(`Récord: ${mejor}`, ANCHO / 2, 545, 15, '#a9a3c2');
+    texto('Vampiro', ANCHO / 2, 190, 110, '#c8142a', 'display');
+    texto('Sobrevive cada noche', ANCHO / 2, 285, 22, '#efe9e1');
+    texto('hasta el amanecer.', ANCHO / 2, 315, 22, '#efe9e1');
+    leyenda(410);
+    texto('Murciélago', ANCHO / 2, 540, 20, '#ff8a98');
+    texto('impulso que atraviesa y elimina cazadores', ANCHO / 2, 566, 15, '#efe9e1');
+    texto('(cuesta un poco de sangre)', ANCHO / 2, 588, 15, '#a9a3c2');
+    texto('Niebla roja', ANCHO / 2, 632, 20, '#d9a6ff');
+    texto('muerde 4 aldeanos para cargarla y elimina', ANCHO / 2, 658, 15, '#efe9e1');
+    texto('a todos los cazadores cercanos', ANCHO / 2, 680, 15, '#efe9e1');
+    texto('Arrastra el dedo para moverte', ANCHO / 2, 730, 14, '#a9a3c2');
+    texto('Toca para empezar', ANCHO / 2, 810, 36, '#e8e4c9', 'display');
+    if (mejor) texto(`Récord: ${mejor}`, ANCHO / 2, 860, 15, '#a9a3c2');
     return;
   }
   // Ordenar por altura para que lo de abajo tape lo de arriba
@@ -713,21 +718,27 @@ function dibujar(t) {
   if (estado === 'amanecer') {
     velo('rgba(40,15,0,.6)');
     texto('¡Amaneció!', ANCHO / 2, ALTO / 2 - 90, 84, '#ffb347', 'display');
-    texto(`Sobreviviste la noche ${noche}. Te escondes en tu ataúd hasta la próxima.`, ANCHO / 2, ALTO / 2 - 20, 19, '#efe9e1');
-    texto(`Puntos: ${puntaje() + 100}  (+100 por la noche)`, ANCHO / 2, ALTO / 2 + 18, 19, '#efe9e1');
-    texto(`Toca para empezar la noche ${noche + 1}`, ANCHO / 2, ALTO / 2 + 90, 32, '#e8e4c9', 'display');
+    texto(`Sobreviviste la noche ${noche}.`, ANCHO / 2, ALTO / 2 - 10, 20, '#efe9e1');
+    texto('Te escondes en tu ataúd hasta la próxima.', ANCHO / 2, ALTO / 2 + 18, 17, '#efe9e1');
+    texto(`Puntos: ${puntaje() + 100}  (+100 por la noche)`, ANCHO / 2, ALTO / 2 + 56, 18, '#ffcf6b');
+    texto(`Toca para empezar la noche ${noche + 1}`, ANCHO / 2, ALTO / 2 + 130, 30, '#e8e4c9', 'display');
   } else if (estado === 'fin') {
     velo();
-    texto('Te quedaste sin sangre', ANCHO / 2, ALTO / 2 - 80, 64, '#c8142a', 'display');
-    texto(`Llegaste a la noche ${noche}   ·   Puntos: ${puntaje()}   ·   Récord: ${mejor}`, ANCHO / 2, ALTO / 2, 20, '#efe9e1');
-    texto('Toca para volver a intentarlo', ANCHO / 2, ALTO / 2 + 70, 32, '#e8e4c9', 'display');
+    texto('Te quedaste', ANCHO / 2, ALTO / 2 - 130, 64, '#c8142a', 'display');
+    texto('sin sangre', ANCHO / 2, ALTO / 2 - 70, 64, '#c8142a', 'display');
+    texto(`Llegaste a la noche ${noche}`, ANCHO / 2, ALTO / 2, 20, '#efe9e1');
+    texto(`Puntos: ${puntaje()}   ·   Récord: ${mejor}`, ANCHO / 2, ALTO / 2 + 30, 20, '#efe9e1');
+    texto('Toca para volver a intentarlo', ANCHO / 2, ALTO / 2 + 110, 30, '#e8e4c9', 'display');
   }
 }
 
 // Actualiza el aspecto de los botones (carga de la niebla)
 const btnNiebla = document.getElementById('btn-niebla');
 const cargaEl = document.getElementById('carga-niebla');
+const poderesEl = document.getElementById('poderes');
 function actualizarBotones() {
+  // Los botones solo se muestran durante la partida (no tapan los menús)
+  poderesEl.hidden = estado !== 'jugando';
   const f = estado === 'jugando' ? cargaNiebla / MORDIDAS_PARA_NIEBLA : 0;
   cargaEl.style.height = f * 100 + '%';
   btnNiebla.classList.toggle('listo', f >= 1);
