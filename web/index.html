@@ -372,7 +372,8 @@ window.addEventListener('keyup', (e) => teclas.delete(e.key.toLowerCase()));
 // ---- Entrada: joystick táctil --------------------------------------------
 // Al apoyar el dedo se fija el centro; arrastrar indica dirección e intensidad.
 const joystick = { activo: false, id: null, origen: { x: 0, y: 0 }, actual: { x: 0, y: 0 } };
-const RADIO_JOY = 60;                    // px CSS para alcanzar velocidad máxima
+const RADIO_JOY = 60;                    // px CSS: tamaño visual del anillo
+const ARRASTRE_MAX = 26;                 // px CSS de arrastre para ir a velocidad máxima
 
 document.addEventListener('pointerdown', (e) => {
   if (e.target.closest('#poderes, #btn-sonido')) return;          // los botones tienen su propio manejo
@@ -412,7 +413,7 @@ function leerMovimiento() {
   if (joystick.activo) {
     const d = resta(joystick.actual, joystick.origen);
     const l = largo(d);
-    if (l > 8) return { ...normal(d), fuerza: Math.min(1, l / RADIO_JOY) };
+    if (l > 8) return { ...normal(d), fuerza: Math.min(1, l / ARRASTRE_MAX) };
   }
   return { x: 0, y: 0, fuerza: 0 };
 }
@@ -610,7 +611,8 @@ class Vampiro {
 }
 
 class Aldeano {
-  static RADIO = 11; static VEL = 85; static VEL_HUIDA = 145; static MIEDO = 140;
+  static RADIO = 11; static VEL = 85; static VEL_HUIDA = 125; static VEL_CANSADO = 55; static MIEDO = 140;
+  static AGUANTE = 2;                    // segundos que pueden correr antes de cansarse
   constructor() {
     this.pos = { x: azar(40, ANCHO - 40), y: azar(130, ALTO - 40) };
     const a = azar(0, Math.PI * 2);
@@ -619,18 +621,22 @@ class Aldeano {
     this.ropa = elegir(['#3f6fc4', '#b5763a', '#4d8a5b', '#a4487a']);
     this.pelo = elegir(['#3b2416', '#c99a4a', '#1a1a1a', '#7a3b1e']);
     this.asustado = false;
+    this.energia = Aldeano.AGUANTE;      // se gasta al huir y se recupera al calmarse
     this.paso = azar(0, 6);
   }
   actualizar(dt) {
     const lejos = resta(this.pos, vampiro.pos);
     const d = largo(lejos);
     this.asustado = d > 0 && d < Aldeano.MIEDO;
-    if (this.asustado) {                 // huir del vampiro
+    if (this.asustado) {                 // huir del vampiro (más lento si está cansado)
+      this.energia = Math.max(0, this.energia - dt);
+      const vel = this.energia > 0 ? Aldeano.VEL_HUIDA : Aldeano.VEL_CANSADO;
       const n = normal(lejos);
-      this.pos.x += n.x * Aldeano.VEL_HUIDA * dt;
-      this.pos.y += n.y * Aldeano.VEL_HUIDA * dt;
+      this.pos.x += n.x * vel * dt;
+      this.pos.y += n.y * vel * dt;
       this.paso += dt * 16;
     } else {                             // paseo aleatorio
+      this.energia = Math.min(Aldeano.AGUANTE, this.energia + dt * 0.5);   // recuperar el aliento
       this.tCambio -= dt;
       if (this.tCambio <= 0) {
         const giro = azar(-2.1, 2.1), c = Math.cos(giro), s = Math.sin(giro);
@@ -655,7 +661,13 @@ class Aldeano {
     circulo(x, y - 6, 8, '#eac39c');
     ctx.fillStyle = this.pelo;
     ctx.beginPath(); ctx.arc(x, y - 7, 8, Math.PI, 0); ctx.fill();
-    if (this.asustado) texto('!', x + 12, y - 16, 18, '#ffe08a', 'cuerpo');
+    if (this.asustado && this.energia > 0) texto('!', x + 12, y - 16, 18, '#ffe08a', 'cuerpo');
+    else if (this.asustado) {            // cansado: gota de sudor azul
+      ctx.fillStyle = '#7fd0ff';
+      ctx.beginPath(); ctx.moveTo(x + 11, y - 22);
+      ctx.quadraticCurveTo(x + 16, y - 13, x + 11, y - 11);
+      ctx.quadraticCurveTo(x + 6, y - 13, x + 11, y - 22); ctx.fill();
+    }
   }
 }
 
