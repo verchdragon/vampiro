@@ -39,16 +39,16 @@
   /* Columna de botones de poderes (abajo a la derecha) */
   #poderes {
     position: fixed;
-    right: calc(20px + env(safe-area-inset-right, 0px));
-    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    align-items: center;
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+    display: grid;
+    grid-template-columns: 76px 76px;
+    grid-template-areas: "hipnosis enjambre" "niebla murcielago";
+    gap: 10px;
   }
   .poder {
     position: relative;
-    width: 88px; height: 88px;
+    width: 76px; height: 76px;
     border-radius: 50%;
     border: 2px solid var(--color);
     background: color-mix(in srgb, var(--color) 30%, transparent);
@@ -72,8 +72,14 @@
   }
   .poder.listo { box-shadow: 0 0 18px var(--color); }
   .poder:disabled { opacity: .55; }
-  #btn-murcielago { --color: var(--sangre); }
-  #btn-niebla { --color: var(--niebla); }
+  #btn-murcielago { --color: var(--sangre); grid-area: murcielago; }
+  #btn-niebla { --color: var(--niebla); grid-area: niebla; }
+  #btn-hipnosis { --color: #22b8c4; grid-area: hipnosis; }
+  #btn-enjambre { --color: #e08a2f; grid-area: enjambre; }
+  .poder { font-size: 9.5px; letter-spacing: 0; }
+  /* Asegura que los botones ocultos no se muestren aunque usen display: grid */
+  [hidden] { display: none !important; }
+  .poder svg { width: 32px; height: 20px; }
   /* Botón de silenciar: abajo a la izquierda */
   #btn-sonido {
     position: fixed;
@@ -95,6 +101,20 @@
   <canvas id="lienzo" aria-label="Juego Vampiro"></canvas>
 </div>
 <div id="poderes">
+  <button id="btn-hipnosis" class="poder" type="button" aria-label="Hipnosis" hidden>
+    <div class="carga" id="carga-hipnosis"></div>
+    <span>
+      <svg viewBox="0 0 40 22" aria-hidden="true"><path d="M2 11C8 3 32 3 38 11 32 19 8 19 2 11zm18-6a6 6 0 1 0 0 12 6 6 0 0 0 0-12zm0 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6z"/></svg>
+      Hipnosis
+    </span>
+  </button>
+  <button id="btn-enjambre" class="poder" type="button" aria-label="Enjambre de murciélagos" hidden>
+    <div class="carga" id="carga-enjambre"></div>
+    <span>
+      <svg viewBox="0 0 40 22" aria-hidden="true"><path d="M10 4c1 0 2 1 2 2 2-3 5-4 8-3-2 1-2 3-2 5-2-1-3-1-5 1-1-1-2-1-3 1-1-2-2-2-3-1-2-2-3-2-5-1 0-2 0-4-2-5 3-1 6 0 8 3 0-1 1-2 2-2zm20 8c1 0 2 1 2 2 2-3 5-4 8-3-2 1-2 3-2 5-2-1-3-1-5 1-1-1-2-1-3 1-1-2-2-2-3-1-2-2-3-2-5-1 0-2 0-4-2-5 3-1 6 0 8 3 0-1 1-2 2-2z"/></svg>
+      Enjambre
+    </span>
+  </button>
   <button id="btn-niebla" class="poder" type="button" aria-label="Niebla roja">
     <div class="carga" id="carga-niebla"></div>
     <span>
@@ -141,6 +161,12 @@ const MAX_ALDEANOS = 6;
 const DURACION_NOCHE = 60;               // segundos hasta el amanecer
 const MORDIDAS_PARA_NIEBLA = 4;          // mordidas necesarias para cargar la niebla
 const RADIO_NIEBLA = 230;                // alcance de la onda de niebla
+// Hipnosis (se desbloquea en la noche 2): paraliza a los cazadores cercanos
+const NOCHE_HIPNOSIS = 2, HIPNOSIS_ESPERA = 10, HIPNOSIS_DURA = 3.5, HIPNOSIS_RADIO = 220;
+// Enjambre (se desbloquea en la noche 3): murciélagos que giran a tu alrededor
+const NOCHE_ENJAMBRE = 3, ENJAMBRE_ESPERA = 18, ENJAMBRE_DURA = 7, ENJAMBRE_RADIO = 52;
+// Estacas lanzadas por los cazadores desde la noche 3
+const NOCHE_ESTACAS = 3, ESTACA_VEL = 380, ESTACA_ALCANCE = 260, ESTACA_DANO = 15, DISTANCIA_TIRO = 230;
 
 // Dificultad según el número de noche
 const maxCazadores = (n) => Math.min(12, 2 + n * 2);
@@ -275,6 +301,25 @@ const Sonido = {
   amanecer() {                           // acorde mayor ascendente: ¡victoria!
     [523, 659, 784, 1047].forEach((f, i) => this.tono(f, 0.9, { tipo: 'triangle', vol: 0.18, cuando: i * 0.12 }));
   },
+  hipnosis() {                           // tono ondulante y misterioso
+    this.tono(660, 1.2, { tipo: 'sine', hasta: 330, vol: 0.18 });
+    this.tono(668, 1.2, { tipo: 'sine', hasta: 334, vol: 0.18 });   // ligeramente desafinado
+    this.tono(990, 0.8, { tipo: 'triangle', hasta: 495, vol: 0.06, cuando: 0.1 });
+  },
+  enjambre() {                           // chillidos agudos de murciélagos
+    for (let i = 0; i < 6; i++) this.tono(azar(2500, 4200), 0.07, { tipo: 'square', vol: 0.05, cuando: i * 0.06 });
+    this.ruido(0.5, { freq: 1500, hasta: 3500, vol: 0.3, q: 2 });
+  },
+  lanzarEstaca() {                       // silbido corto
+    this.ruido(0.18, { freq: 1800, hasta: 900, vol: 0.3, q: 4 });
+  },
+  impactoEstaca() {                      // golpe seco de madera
+    this.tono(240, 0.12, { tipo: 'triangle', hasta: 90, vol: 0.35 });
+    this.ruido(0.08, { freq: 900, tipo: 'lowpass', vol: 0.4 });
+  },
+  nuevoPoder() {                         // fanfarria corta al desbloquear
+    [659, 784, 988, 1319].forEach((f, i) => this.tono(f, 0.35, { tipo: 'square', vol: 0.06, cuando: 0.6 + i * 0.1 }));
+  },
   derrota() {                            // notas menores que bajan
     [440, 415, 392, 330].forEach((f, i) => this.tono(f, 0.6, { tipo: 'triangle', vol: 0.2, cuando: i * 0.25 }));
     this.tono(110, 1.6, { tipo: 'sawtooth', hasta: 55, vol: 0.1, cuando: 0.9 });
@@ -365,6 +410,8 @@ window.addEventListener('keydown', (e) => {
   teclas.add(k);
   if (k === ' ') { e.preventDefault(); accionMurcielago(); }
   if (k === 'e') accionNiebla();
+  if (k === 'q') accionHipnosis();
+  if (k === 'f') accionEnjambre();
   if ((k === 'r' || k === 'enter') && estado !== 'jugando') continuar();
 });
 window.addEventListener('keyup', (e) => teclas.delete(e.key.toLowerCase()));
@@ -393,11 +440,15 @@ document.addEventListener('pointercancel', soltar);
 
 document.getElementById('btn-murcielago').addEventListener('pointerdown', (e) => { e.preventDefault(); accionMurcielago(); });
 document.getElementById('btn-niebla').addEventListener('pointerdown', (e) => { e.preventDefault(); accionNiebla(); });
+document.getElementById('btn-hipnosis').addEventListener('pointerdown', (e) => { e.preventDefault(); accionHipnosis(); });
+document.getElementById('btn-enjambre').addEventListener('pointerdown', (e) => { e.preventDefault(); accionEnjambre(); });
 
 function accionMurcielago() {
   if (estado === 'jugando') vampiro.activarMurcielago();
   else continuar();
 }
+function accionHipnosis() { if (estado === 'jugando') lanzarHipnosis(); }
+function accionEnjambre() { if (estado === 'jugando') lanzarEnjambre(); }
 function accionNiebla() {
   if (estado === 'jugando') lanzarNiebla();
 }
@@ -442,7 +493,7 @@ function dibujarEfectos() {
     const a = 1 - o.r / o.max;
     const g = ctx.createRadialGradient(o.x, o.y, o.r * 0.6, o.x, o.y, o.r);
     g.addColorStop(0, 'rgba(155,47,208,0)');
-    g.addColorStop(1, `rgba(200,40,120,${0.55 * a})`);
+    g.addColorStop(1, `rgba(${o.color || '200,40,120'},${0.55 * a})`);
     ctx.fillStyle = g;
     ctx.beginPath(); ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2); ctx.fill();
   }
@@ -546,9 +597,9 @@ class Vampiro {
     this.sangre -= PERDIDA_SANGRE_SEG * dt;
     this.tInv = Math.max(0, this.tInv - dt);
   }
-  recibirGolpe() {                       // true si de verdad recibió daño
+  recibirGolpe(dano = DANO_CAZADOR) {     // true si de verdad recibió daño
     if (this.tInv > 0 || this.esMurcielago) return false;
-    this.sangre -= DANO_CAZADOR;
+    this.sangre -= dano;
     this.tInv = INVULNERABLE_SEG;
     Sonido.golpe();
     salpicar(this.pos.x, this.pos.y, '#c8142a', 18);
@@ -673,10 +724,34 @@ class Aldeano {
 
 class Cazador {
   static RADIO = 14;
-  constructor(vel) { this.pos = puntoEnBorde(); this.vel = vel; this.paso = azar(0, 6); this.mira = { x: 1, y: 0 }; }
-  actualizar(dt) {                       // perseguir al vampiro
+  constructor(vel) {
+    this.pos = puntoEnBorde(); this.vel = vel; this.paso = azar(0, 6); this.mira = { x: 1, y: 0 };
+    this.tHipno = 0;                     // tiempo restante hipnotizado
+    this.tTiro = azar(1.5, 3);           // espera para el siguiente lanzamiento
+    this.apuntando = 0;                  // tiempo de preparación antes de lanzar (aviso)
+  }
+  get lanzaEstacas() { return noche >= NOCHE_ESTACAS; }
+  actualizar(dt) {
+    this.tHipno = Math.max(0, this.tHipno - dt);
+    if (this.tHipno > 0) return;         // hipnotizado: se queda quieto
     this.mira = normal(resta(vampiro.pos, this.pos));
-    this.pos.x += this.mira.x * this.vel * dt;
+    const distancia = largo(resta(vampiro.pos, this.pos));
+
+    // Desde la noche 3: si estás cerca, se detiene, apunta y lanza una estaca
+    if (this.lanzaEstacas) {
+      if (this.apuntando > 0) {
+        this.apuntando -= dt;
+        if (this.apuntando <= 0) {
+          estacas.push({ x: this.pos.x, y: this.pos.y + 4, vx: this.mira.x * ESTACA_VEL, vy: this.mira.y * ESTACA_VEL, recorrido: 0 });
+          Sonido.lanzarEstaca();
+          this.tTiro = azar(2.5, 4);
+        }
+        return;                          // no camina mientras apunta
+      }
+      this.tTiro -= dt;
+      if (this.tTiro <= 0 && distancia < DISTANCIA_TIRO && distancia > 50) { this.apuntando = 0.45; return; }
+    }
+    this.pos.x += this.mira.x * this.vel * dt;   // perseguir al vampiro
     this.pos.y += this.mira.y * this.vel * dt;
     this.paso += dt * 10;
   }
@@ -684,12 +759,16 @@ class Cazador {
     const { x } = this.pos;
     const y = this.pos.y + Math.abs(Math.sin(this.paso)) * -2;
     sombra(x, this.pos.y + 19, 14, 5);
-    // Estaca de madera apuntando al vampiro
-    ctx.strokeStyle = '#a07040'; ctx.lineWidth = 4; ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x + this.mira.x * 6, y + 6 + this.mira.y * 6);
-    ctx.lineTo(x + this.mira.x * 26, y + 6 + this.mira.y * 26);
-    ctx.stroke();
+    // Estaca de madera apuntando al vampiro (echada hacia atrás mientras apunta)
+    const recarga = this.lanzaEstacas && this.tTiro > 2.2;   // recién lanzó: mano vacía
+    if (!recarga) {
+      const atras = this.apuntando > 0 ? -10 : 0;
+      ctx.strokeStyle = '#a07040'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x + this.mira.x * (6 + atras), y + 6 + this.mira.y * (6 + atras));
+      ctx.lineTo(x + this.mira.x * (26 + atras), y + 6 + this.mira.y * (26 + atras));
+      ctx.stroke();
+    }
     // Abrigo largo
     ctx.fillStyle = '#3d2a1c';
     ctx.beginPath(); ctx.roundRect(x - 12, y - 2, 24, 22, 7); ctx.fill();
@@ -703,6 +782,86 @@ class Cazador {
     ctx.beginPath(); ctx.ellipse(x, y - 13, 17, 5, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.roundRect(x - 8, y - 24, 16, 12, 3); ctx.fill();
     ctx.fillStyle = '#7a1414'; ctx.fillRect(x - 8, y - 16, 16, 3);   // cinta del sombrero
+    // Aviso rojo: está a punto de lanzar
+    if (this.apuntando > 0) texto('!', x, y - 34, 22, '#ff3b4e', 'cuerpo');
+    // Hipnotizado: espiral turquesa girando sobre la cabeza
+    if (this.tHipno > 0) {
+      ctx.strokeStyle = '#3fe0ea'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let a = 0; a < Math.PI * 4; a += 0.3) {
+        const r = a * 1.6, g = a + performance.now() / 150;
+        ctx.lineTo(x + Math.cos(g) * r, y - 34 + Math.sin(g) * r * 0.5);
+      }
+      ctx.stroke();
+    }
+  }
+}
+
+// ---- Estacas lanzadas por los cazadores ----------------------------------
+let estacas = [];
+function actualizarEstacas(dt) {
+  estacas = estacas.filter((e) => {
+    e.x += e.vx * dt; e.y += e.vy * dt;
+    e.recorrido += ESTACA_VEL * dt;
+    if (e.recorrido > ESTACA_ALCANCE) {  // corta distancia: cae al suelo
+      salpicar(e.x, e.y, '#a07040', 5, 60);
+      return false;
+    }
+    // ¿La atrapa algún murciélago del enjambre?
+    if (enjambre.some((m) => largo(resta(m, e)) < 16)) { salpicar(e.x, e.y, '#a07040', 6, 80); return false; }
+    // ¿Le pega al vampiro?
+    if (largo(resta(e, vampiro.pos)) < Vampiro.RADIO + 5) {
+      if (vampiro.esMurcielago) return true;          // en murciélago la esquivas
+      if (vampiro.recibirGolpe(ESTACA_DANO)) {
+        Sonido.impactoEstaca();
+        textoFlotante(vampiro.pos.x, vampiro.pos.y - 28, `-${ESTACA_DANO}`, '#ff6b7d');
+      }
+      return false;
+    }
+    return true;
+  });
+}
+function dibujarEstacas() {
+  for (const e of estacas) {
+    const ang = Math.atan2(e.vy, e.vx);
+    ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(ang);
+    ctx.fillStyle = '#b07a44';
+    ctx.fillRect(-12, -2, 18, 4);        // cuerpo de la estaca
+    tri(6, -3, 13, 0, 6, 3);             // punta afilada
+    ctx.restore();
+  }
+}
+
+// ---- Enjambre de murciélagos que protege al vampiro ----------------------
+let enjambre = [];                       // posiciones actuales de los murciélagos
+let tEnjambreActivo = 0;                 // segundos que le quedan al enjambre
+function actualizarEnjambre(dt, t) {
+  tEnjambreActivo = Math.max(0, tEnjambreActivo - dt);
+  if (tEnjambreActivo <= 0) { enjambre = []; return; }
+  // Tres murciélagos girando alrededor del vampiro
+  enjambre = [0, 1, 2].map((i) => {
+    const a = t * 4 + i * (Math.PI * 2 / 3);
+    return { x: vampiro.pos.x + Math.cos(a) * ENJAMBRE_RADIO, y: vampiro.pos.y + Math.sin(a) * ENJAMBRE_RADIO };
+  });
+  // Eliminan a los cazadores que tocan
+  cazadores = cazadores.filter((c) => {
+    if (enjambre.some((m) => largo(resta(m, c.pos)) < Cazador.RADIO + 10)) { eliminarCazador(c); return false; }
+    return true;
+  });
+}
+function dibujarEnjambre(t) {
+  for (const m of enjambre) {
+    const aleteo = Math.sin(t * 45) * 5;
+    ctx.fillStyle = '#2a1036';
+    ctx.beginPath();
+    ctx.moveTo(m.x, m.y);
+    ctx.quadraticCurveTo(m.x - 8, m.y - 8 - aleteo, m.x - 15, m.y - 3 - aleteo);
+    ctx.quadraticCurveTo(m.x - 8, m.y + 2, m.x, m.y + 4);
+    ctx.quadraticCurveTo(m.x + 8, m.y + 2, m.x + 15, m.y - 3 - aleteo);
+    ctx.quadraticCurveTo(m.x + 8, m.y - 8 - aleteo, m.x, m.y);
+    ctx.fill();
+    circulo(m.x - 1.5, m.y - 1, 1.2, '#ffb347');
+    circulo(m.x + 1.5, m.y - 1, 1.2, '#ffb347');
   }
 }
 
@@ -755,6 +914,8 @@ function empezarNoche() {
   aldeanos = Array.from({ length: MAX_ALDEANOS }, () => new Aldeano());
   cazadores = [];
   particulas = []; textos = []; ondas = [];
+  estacas = []; enjambre = []; tEnjambreActivo = 0;
+  esperaHipnosis = 0; esperaEnjambre = 0;   // poderes listos al empezar la noche
   tiempoNoche = 0;
   tSpawn = 2.5;
   estado = 'jugando';
@@ -766,11 +927,36 @@ function continuar() {                   // toque en una pantalla de pausa
 }
 
 // Onda de niebla: elimina a los cazadores dentro del radio
+// Tiempo de espera restante de cada poder (0 = listo)
+let esperaHipnosis = 0, esperaEnjambre = 0;
+const hipnosisDesbloqueada = () => noche >= NOCHE_HIPNOSIS;
+const enjambreDesbloqueado = () => noche >= NOCHE_ENJAMBRE;
+
+// Hipnosis: paraliza a los cazadores cercanos; si los tocas, los muerdes
+function lanzarHipnosis() {
+  if (!hipnosisDesbloqueada() || esperaHipnosis > 0) return;
+  esperaHipnosis = HIPNOSIS_ESPERA;
+  Sonido.hipnosis();
+  ondas.push({ x: vampiro.pos.x, y: vampiro.pos.y, r: 10, max: HIPNOSIS_RADIO, color: '34,184,196' });
+  for (const c of cazadores) {
+    if (largo(resta(c.pos, vampiro.pos)) < HIPNOSIS_RADIO) { c.tHipno = HIPNOSIS_DURA; c.apuntando = 0; }
+  }
+}
+// Enjambre: tres murciélagos giran a tu alrededor, eliminan cazadores y atrapan estacas
+function lanzarEnjambre() {
+  if (!enjambreDesbloqueado() || esperaEnjambre > 0) return;
+  esperaEnjambre = ENJAMBRE_ESPERA;
+  tEnjambreActivo = ENJAMBRE_DURA;
+  Sonido.enjambre();
+  salpicar(vampiro.pos.x, vampiro.pos.y, '#2a1036', 16, 200);
+}
+
 function lanzarNiebla() {
   if (cargaNiebla < MORDIDAS_PARA_NIEBLA) return;
   cargaNiebla = 0;
   Sonido.niebla();
   ondas.push({ x: vampiro.pos.x, y: vampiro.pos.y, r: 10, max: RADIO_NIEBLA });
+  estacas = estacas.filter((e) => largo(resta(e, vampiro.pos)) >= RADIO_NIEBLA);
   cazadores = cazadores.filter((c) => {
     if (largo(resta(c.pos, vampiro.pos)) < RADIO_NIEBLA) { eliminarCazador(c); return false; }
     return true;
@@ -802,6 +988,10 @@ function actualizar(dt) {
   }
   aldeanos.forEach((a) => a.actualizar(dt));
   cazadores.forEach((c) => c.actualizar(dt));
+  actualizarEstacas(dt);
+  actualizarEnjambre(dt, tiempoTotal);
+  esperaHipnosis = Math.max(0, esperaHipnosis - dt);
+  esperaEnjambre = Math.max(0, esperaEnjambre - dt);
 
   // Mordidas: dan sangre y cargan la niebla
   aldeanos = aldeanos.filter((a) => {
@@ -824,6 +1014,12 @@ function actualizar(dt) {
     const d = resta(c.pos, vampiro.pos);
     if (largo(d) >= Cazador.RADIO + Vampiro.RADIO + 4) return true;
     if (vampiro.esMurcielago) { eliminarCazador(c); return false; }  // el murciélago los atraviesa
+    if (c.tHipno > 0) {                  // hipnotizado: lo muerdes y recuperas sangre
+      vampiro.sangre = Math.min(SANGRE_MAX, vampiro.sangre + 10);
+      Sonido.mordida();
+      eliminarCazador(c);
+      return false;
+    }
     if (vampiro.recibirGolpe()) {
       const n = normal(d);               // empujón para no recibir golpes seguidos
       c.pos.x += n.x * 70; c.pos.y += n.y * 70;
@@ -841,6 +1037,7 @@ function actualizar(dt) {
     estado = 'amanecer';
     momentoPausa = performance.now();
     Sonido.amanecer();
+    if (noche + 1 === NOCHE_HIPNOSIS || noche + 1 === NOCHE_ENJAMBRE) Sonido.nuevoPoder();
     if (puntaje() + 100 > mejor) { mejor = puntaje() + 100; guardarRecord(); }
   }
 }
@@ -909,16 +1106,20 @@ function dibujar(t) {
   dibujarFondo(t);
   if (estado === 'inicio') {
     velo();
-    texto('Vampiro', ANCHO / 2, 190, 110, '#c8142a', 'display');
-    texto('Sobrevive cada noche', ANCHO / 2, 285, 22, '#efe9e1');
-    texto('hasta el amanecer.', ANCHO / 2, 315, 22, '#efe9e1');
-    leyenda(410);
-    texto('Murciélago', ANCHO / 2, 540, 20, '#ff8a98');
-    texto('impulso que atraviesa y elimina cazadores', ANCHO / 2, 566, 15, '#efe9e1');
-    texto('(cuesta un poco de sangre)', ANCHO / 2, 588, 15, '#a9a3c2');
-    texto('Niebla roja', ANCHO / 2, 632, 20, '#d9a6ff');
-    texto('muerde 4 aldeanos para cargarla y elimina', ANCHO / 2, 658, 15, '#efe9e1');
-    texto('a todos los cazadores cercanos', ANCHO / 2, 680, 15, '#efe9e1');
+    texto('Vampiro', ANCHO / 2, 150, 100, '#c8142a', 'display');
+    texto('Sobrevive cada noche hasta el amanecer.', ANCHO / 2, 232, 19, '#efe9e1');
+    leyenda(300);
+    // Lista de poderes: nombre, descripción, color
+    [
+      ['Murciélago', 'impulso que atraviesa y elimina cazadores', '#ff8a98'],
+      ['Niebla roja', 'muerde 4 aldeanos: elimina cazadores cercanos', '#d9a6ff'],
+      ['Hipnosis · noche 2', 'paraliza cazadores; tócalos para morderlos', '#5fe3ec'],
+      ['Enjambre · noche 3', 'murciélagos que te protegen y atrapan estacas', '#ffb366'],
+    ].forEach(([nombre, desc, color], i) => {
+      texto(nombre, ANCHO / 2, 420 + i * 62, 19, color);
+      texto(desc, ANCHO / 2, 444 + i * 62, 14, '#efe9e1');
+    });
+    texto('¡Desde la noche 3 los cazadores lanzan estacas!', ANCHO / 2, 690, 15, '#ff6b7d');
     texto('Arrastra el dedo para moverte', ANCHO / 2, 730, 14, '#a9a3c2');
     texto('Toca para empezar', ANCHO / 2, 810, 36, '#e8e4c9', 'display');
     if (mejor) texto(`Récord: ${mejor}`, ANCHO / 2, 860, 15, '#a9a3c2');
@@ -927,6 +1128,8 @@ function dibujar(t) {
   // Ordenar por altura para que lo de abajo tape lo de arriba
   const todos = [...aldeanos, ...cazadores, vampiro].sort((a, b) => a.pos.y - b.pos.y);
   todos.forEach((e) => e.dibujar(t));
+  dibujarEstacas();
+  dibujarEnjambre(t);
   dibujarEfectos();
   luzAmanecer();
   dibujarHud();
@@ -938,7 +1141,14 @@ function dibujar(t) {
     texto(`Sobreviviste la noche ${noche}.`, ANCHO / 2, ALTO / 2 - 10, 20, '#efe9e1');
     texto('Te escondes en tu ataúd hasta la próxima.', ANCHO / 2, ALTO / 2 + 18, 17, '#efe9e1');
     texto(`Puntos: ${puntaje() + 100}  (+100 por la noche)`, ANCHO / 2, ALTO / 2 + 56, 18, '#ffcf6b');
-    texto(`Toca para empezar la noche ${noche + 1}`, ANCHO / 2, ALTO / 2 + 130, 30, '#e8e4c9', 'display');
+    if (noche + 1 === NOCHE_HIPNOSIS) {
+      texto('¡Nuevo poder: Hipnosis!', ANCHO / 2, ALTO / 2 + 100, 22, '#5fe3ec');
+      texto('Paraliza a los cazadores cercanos y tócalos para morderlos', ANCHO / 2, ALTO / 2 + 126, 14, '#efe9e1');
+    } else if (noche + 1 === NOCHE_ENJAMBRE) {
+      texto('¡Nuevo poder: Enjambre!', ANCHO / 2, ALTO / 2 + 100, 22, '#ffb366');
+      texto('Cuidado: ahora los cazadores lanzan estacas', ANCHO / 2, ALTO / 2 + 126, 15, '#ff6b7d');
+    }
+    texto(`Toca para empezar la noche ${noche + 1}`, ANCHO / 2, ALTO / 2 + 190, 30, '#e8e4c9', 'display');
   } else if (estado === 'fin') {
     velo();
     texto('Te quedaste', ANCHO / 2, ALTO / 2 - 130, 64, '#c8142a', 'display');
@@ -959,6 +1169,15 @@ function actualizarBotones() {
   const f = estado === 'jugando' ? cargaNiebla / MORDIDAS_PARA_NIEBLA : 0;
   cargaEl.style.height = f * 100 + '%';
   btnNiebla.classList.toggle('listo', f >= 1);
+  // Hipnosis y enjambre: aparecen al desbloquearse; el relleno sube mientras se recargan
+  pintarPoderDeEspera('hipnosis', hipnosisDesbloqueada(), esperaHipnosis, HIPNOSIS_ESPERA);
+  pintarPoderDeEspera('enjambre', enjambreDesbloqueado(), esperaEnjambre, ENJAMBRE_ESPERA);
+}
+function pintarPoderDeEspera(nombre, desbloqueado, espera, total) {
+  const btn = document.getElementById('btn-' + nombre);
+  btn.hidden = !desbloqueado;
+  document.getElementById('carga-' + nombre).style.height = (1 - espera / total) * 100 + '%';
+  btn.classList.toggle('listo', espera <= 0);
 }
 
 // ---- Bucle principal -----------------------------------------------------
