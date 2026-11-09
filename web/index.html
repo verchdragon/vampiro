@@ -1,0 +1,468 @@
+<title>Vampiro</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Rubik:wght@400;600&display=swap">
+<style>
+  /* Diseño: un solo mundo nocturno (sin tema claro); el lienzo ocupa toda la pantalla
+     y los controles táctiles flotan encima respetando las zonas seguras del dispositivo. */
+  :root {
+    --noche: #0b0916;        /* fondo del cielo */
+    --sangre: #c8142a;       /* acento principal */
+    --sangre-osc: #5a0010;
+    --hueso: #efe9e1;        /* texto */
+    --niebla: #8c86a3;       /* texto secundario */
+    --luna: #e8e4c9;
+    --display: "Pirata One", "Georgia", serif;
+    --cuerpo: "Rubik", system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--noche);
+    color: var(--hueso);
+    font-family: var(--cuerpo);
+    overflow: hidden;
+    touch-action: none;              /* evita zoom y scroll al jugar con el dedo */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  #escena {
+    position: relative;
+    height: 100%;
+    display: grid;
+    place-items: center;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    box-sizing: border-box;
+  }
+  canvas { display: block; border-radius: 6px; box-shadow: 0 0 0 1px #2a2440; }
+  /* Botón de murciélago: esquina inferior derecha, grande para el pulgar */
+  #btn-murcielago {
+    position: fixed;
+    right: calc(20px + env(safe-area-inset-right, 0px));
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    width: 92px; height: 92px;
+    border-radius: 50%;
+    border: 2px solid var(--sangre);
+    background: rgba(90, 0, 16, .55);
+    color: var(--hueso);
+    font: 600 11px/1.1 var(--cuerpo);
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    display: grid; place-items: center;
+    touch-action: none;
+  }
+  #btn-murcielago:active { background: var(--sangre); }
+  #btn-murcielago:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
+  #btn-murcielago svg { width: 40px; height: 22px; fill: var(--hueso); display: block; margin: 0 auto 4px; }
+  @media (prefers-reduced-motion: reduce) { #btn-murcielago { transition: none; } }
+</style>
+
+<div id="escena">
+  <canvas id="lienzo" aria-label="Juego Vampiro"></canvas>
+</div>
+<button id="btn-murcielago" type="button" aria-label="Forma de murciélago">
+  <span>
+    <svg viewBox="0 0 40 22" aria-hidden="true"><path d="M20 6c2 0 3 2 3 4 4-6 10-8 17-6-4 2-5 5-5 9-3-2-6-2-9 1-2-2-4-2-6 2-2-4-4-4-6-2-3-3-6-3-9-1 0-4-1-7-5-9 7-2 13 0 17 6 0-2 1-4 3-4z"/></svg>
+    Murciélago
+  </span>
+</button>
+
+<script>
+/* =====================================================================
+   VAMPIRO (versión web) — mismo juego que vampiro.py, para navegador.
+   Se juega con el dedo (joystick virtual) o con teclado.
+   ===================================================================== */
+
+// ---- Configuración -------------------------------------------------------
+const ANCHO = 900, ALTO = 600;           // tamaño lógico del mundo
+const SANGRE_MAX = 100;
+const PERDIDA_SANGRE_SEG = 4;            // sangre perdida por segundo
+const SANGRE_POR_MORDIDA = 25;
+const DANO_CAZADOR = 30;
+const COSTO_MURCIELAGO = 10;
+const INVULNERABLE_SEG = 1;
+const MAX_ALDEANOS = 6;
+
+// ---- Utilidades de vectores (objetos {x, y}) -----------------------------
+const largo = (v) => Math.hypot(v.x, v.y);
+const normal = (v) => { const l = largo(v) || 1; return { x: v.x / l, y: v.y / l }; };
+const resta = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
+const azar = (min, max) => min + Math.random() * (max - min);
+const limitar = (p, r) => {             // mantener dentro de la pantalla
+  p.x = Math.max(r, Math.min(ANCHO - r, p.x));
+  p.y = Math.max(r, Math.min(ALTO - r, p.y));
+};
+function puntoEnBorde() {               // lugar de aparición de cazadores
+  const lado = Math.floor(Math.random() * 4);
+  if (lado === 0) return { x: azar(0, ANCHO), y: 15 };
+  if (lado === 1) return { x: azar(0, ANCHO), y: ALTO - 15 };
+  if (lado === 2) return { x: 15, y: azar(0, ALTO) };
+  return { x: ANCHO - 15, y: azar(0, ALTO) };
+}
+
+// ---- Lienzo y escala -----------------------------------------------------
+const lienzo = document.getElementById('lienzo');
+const ctx = lienzo.getContext('2d');
+let escala = 1;                          // píxeles CSS por unidad del mundo
+
+function ajustarTamano() {
+  // Ajusta el lienzo al mayor tamaño que quepa manteniendo proporción 3:2
+  const cont = document.getElementById('escena');
+  const estilo = getComputedStyle(cont);
+  const disponibleX = cont.clientWidth - parseFloat(estilo.paddingLeft) - parseFloat(estilo.paddingRight);
+  const disponibleY = cont.clientHeight - 16;
+  escala = Math.min(disponibleX / ANCHO, disponibleY / ALTO);
+  const dpr = window.devicePixelRatio || 1;
+  lienzo.style.width = ANCHO * escala + 'px';
+  lienzo.style.height = ALTO * escala + 'px';
+  lienzo.width = Math.round(ANCHO * escala * dpr);   // nitidez en pantallas retina
+  lienzo.height = Math.round(ALTO * escala * dpr);
+  ctx.setTransform(escala * dpr, 0, 0, escala * dpr, 0, 0);
+}
+window.addEventListener('resize', ajustarTamano);
+
+// ---- Entrada: teclado ----------------------------------------------------
+const teclas = new Set();
+window.addEventListener('keydown', (e) => {
+  teclas.add(e.key.toLowerCase());
+  if (e.key === ' ') { e.preventDefault(); accionPrincipal(); }
+  if (e.key.toLowerCase() === 'r' && estado === 'fin') reiniciar();
+  if (e.key === 'Enter' && estado !== 'jugando') reiniciar();
+});
+window.addEventListener('keyup', (e) => teclas.delete(e.key.toLowerCase()));
+
+// ---- Entrada: joystick táctil --------------------------------------------
+// Al apoyar el dedo se fija el centro; arrastrar indica dirección e intensidad.
+const joystick = { activo: false, id: null, origen: { x: 0, y: 0 }, actual: { x: 0, y: 0 } };
+const RADIO_JOY = 60;                    // px CSS para alcanzar velocidad máxima
+
+function aMundo(e) {                     // coordenadas de pantalla -> mundo
+  const r = lienzo.getBoundingClientRect();
+  return { x: (e.clientX - r.left) / escala, y: (e.clientY - r.top) / escala };
+}
+document.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('#btn-murcielago')) return;   // el botón tiene su propio manejo
+  if (estado !== 'jugando') { if (puedeReiniciar()) reiniciar(); return; } // tocar para empezar
+  if (joystick.activo) return;
+  joystick.activo = true;
+  joystick.id = e.pointerId;
+  joystick.origen = { x: e.clientX, y: e.clientY };
+  joystick.actual = { ...joystick.origen };
+});
+document.addEventListener('pointermove', (e) => {
+  if (joystick.activo && e.pointerId === joystick.id) joystick.actual = { x: e.clientX, y: e.clientY };
+});
+const soltar = (e) => { if (e.pointerId === joystick.id) { joystick.activo = false; joystick.id = null; } };
+document.addEventListener('pointerup', soltar);
+document.addEventListener('pointercancel', soltar);
+
+document.getElementById('btn-murcielago').addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  accionPrincipal();
+});
+
+function accionPrincipal() {             // ESPACIO o botón: murciélago / empezar
+  if (estado === 'jugando') vampiro.activarMurcielago();
+  else if (puedeReiniciar()) reiniciar();
+}
+
+// Lee la dirección deseada combinando teclado y joystick (0..1 de intensidad)
+function leerMovimiento() {
+  let x = 0, y = 0;
+  if (teclas.has('arrowright') || teclas.has('d')) x += 1;
+  if (teclas.has('arrowleft') || teclas.has('a')) x -= 1;
+  if (teclas.has('arrowdown') || teclas.has('s')) y += 1;
+  if (teclas.has('arrowup') || teclas.has('w')) y -= 1;
+  if (x || y) { const n = normal({ x, y }); return { ...n, fuerza: 1 }; }
+  if (joystick.activo) {
+    const d = resta(joystick.actual, joystick.origen);
+    const l = largo(d);
+    if (l > 8) return { ...normal(d), fuerza: Math.min(1, l / RADIO_JOY) };
+  }
+  return { x: 0, y: 0, fuerza: 0 };
+}
+
+// ---- Entidades -----------------------------------------------------------
+class Vampiro {
+  static RADIO = 16; static VEL = 220; static VEL_MURC = 520; static DUR_MURC = 0.35;
+  constructor() {
+    this.pos = { x: ANCHO / 2, y: ALTO / 2 };
+    this.dir = { x: 1, y: 0 };           // última dirección (para el impulso)
+    this.sangre = SANGRE_MAX;
+    this.tMurc = 0;                      // tiempo restante como murciélago
+    this.tInv = 0;                       // tiempo restante de invulnerabilidad
+  }
+  get esMurcielago() { return this.tMurc > 0; }
+  activarMurcielago() {
+    if (!this.esMurcielago && this.sangre > COSTO_MURCIELAGO) {
+      this.sangre -= COSTO_MURCIELAGO;
+      this.tMurc = Vampiro.DUR_MURC;
+    }
+  }
+  actualizar(dt) {
+    const m = leerMovimiento();
+    if (m.fuerza > 0) this.dir = { x: m.x, y: m.y };
+    if (this.esMurcielago) {             // impulso recto y rápido
+      this.pos.x += this.dir.x * Vampiro.VEL_MURC * dt;
+      this.pos.y += this.dir.y * Vampiro.VEL_MURC * dt;
+      this.tMurc -= dt;
+    } else {
+      this.pos.x += m.x * m.fuerza * Vampiro.VEL * dt;
+      this.pos.y += m.y * m.fuerza * Vampiro.VEL * dt;
+    }
+    limitar(this.pos, Vampiro.RADIO);
+    this.sangre -= PERDIDA_SANGRE_SEG * dt;
+    this.tInv = Math.max(0, this.tInv - dt);
+  }
+  recibirGolpe() {                       // true si de verdad recibió daño
+    if (this.tInv > 0 || this.esMurcielago) return false;
+    this.sangre -= DANO_CAZADOR;
+    this.tInv = INVULNERABLE_SEG;
+    return true;
+  }
+  dibujar() {
+    if (this.tInv > 0 && Math.floor(this.tInv * 10) % 2 === 0) return; // parpadeo
+    const { x, y } = this.pos;
+    if (this.esMurcielago) {
+      // Alas y cuerpo de murciélago
+      ctx.fillStyle = '#6e2a8c';
+      tri(x - 22, y - 8, x, y, x - 10, y + 6);
+      tri(x + 22, y - 8, x, y, x + 10, y + 6);
+      circulo(x, y, 7, '#0b0916');
+      ctx.strokeStyle = '#c8142a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI * 2); ctx.stroke();
+    } else {
+      circulo(x, y, Vampiro.RADIO + 4, '#5a0010');   // capa
+      circulo(x, y, Vampiro.RADIO, '#efe9e1');       // cara pálida
+      circulo(x - 5, y - 3, 3, '#c8142a');           // ojos
+      circulo(x + 5, y - 3, 3, '#c8142a');
+      ctx.fillStyle = '#0b0916';                     // colmillos
+      tri(x - 4, y + 5, x - 2, y + 10, x, y + 5);
+      tri(x, y + 5, x + 2, y + 10, x + 4, y + 5);
+    }
+  }
+}
+
+class Aldeano {
+  static RADIO = 11; static VEL = 90; static VEL_HUIDA = 150; static MIEDO = 140;
+  constructor() {
+    this.pos = { x: azar(40, ANCHO - 40), y: azar(40, ALTO - 40) };
+    const a = azar(0, Math.PI * 2);
+    this.dir = { x: Math.cos(a), y: Math.sin(a) };
+    this.tCambio = azar(1, 3);           // cuándo cambiar de rumbo
+  }
+  actualizar(dt) {
+    const lejos = resta(this.pos, vampiro.pos);
+    const d = largo(lejos);
+    if (d > 0 && d < Aldeano.MIEDO) {    // huir del vampiro
+      const n = normal(lejos);
+      this.pos.x += n.x * Aldeano.VEL_HUIDA * dt;
+      this.pos.y += n.y * Aldeano.VEL_HUIDA * dt;
+    } else {                             // paseo aleatorio
+      this.tCambio -= dt;
+      if (this.tCambio <= 0) {
+        const giro = azar(-2.1, 2.1);
+        const c = Math.cos(giro), s = Math.sin(giro);
+        this.dir = { x: this.dir.x * c - this.dir.y * s, y: this.dir.x * s + this.dir.y * c };
+        this.tCambio = azar(1, 3);
+      }
+      this.pos.x += this.dir.x * Aldeano.VEL * dt;
+      this.pos.y += this.dir.y * Aldeano.VEL * dt;
+    }
+    // Rebotar en los bordes
+    const r = Aldeano.RADIO;
+    if (this.pos.x <= r || this.pos.x >= ANCHO - r) this.dir.x *= -1;
+    if (this.pos.y <= r || this.pos.y >= ALTO - r) this.dir.y *= -1;
+    limitar(this.pos, r);
+  }
+  dibujar() {
+    circulo(this.pos.x, this.pos.y + 6, Aldeano.RADIO, '#466ec8');  // cuerpo
+    circulo(this.pos.x, this.pos.y - 4, 8, '#e6be96');              // cabeza
+  }
+}
+
+class Cazador {
+  static RADIO = 14;
+  constructor(vel) { this.pos = puntoEnBorde(); this.vel = vel; }
+  actualizar(dt) {                       // perseguir al vampiro
+    const n = normal(resta(vampiro.pos, this.pos));
+    this.pos.x += n.x * this.vel * dt;
+    this.pos.y += n.y * this.vel * dt;
+  }
+  dibujar() {
+    const { x, y } = this.pos;
+    circulo(x, y, Cazador.RADIO, '#785028');
+    ctx.fillStyle = '#0b0916';           // sombrero de ala ancha
+    ctx.fillRect(x - 16, y - 12, 32, 5);
+    ctx.fillRect(x - 8, y - 22, 16, 11);
+    ctx.strokeStyle = '#fadc5a'; ctx.lineWidth = 3;   // cruz de plata
+    ctx.beginPath();
+    ctx.moveTo(x, y - 4); ctx.lineTo(x, y + 10);
+    ctx.moveTo(x - 5, y + 1); ctx.lineTo(x + 5, y + 1);
+    ctx.stroke();
+  }
+}
+
+// ---- Ayudas de dibujo ----------------------------------------------------
+function circulo(x, y, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+}
+function tri(x1, y1, x2, y2, x3, y3) {
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.closePath(); ctx.fill();
+}
+function texto(t, x, y, tam, color, fuente = 'var(--cuerpo)', alin = 'center') {
+  ctx.fillStyle = color;
+  ctx.textAlign = alin;
+  ctx.textBaseline = 'middle';
+  ctx.font = `${tam}px ${fuente === 'display' ? '"Pirata One", Georgia, serif' : 'Rubik, system-ui, sans-serif'}`;
+  ctx.fillText(t, x, y);
+}
+
+// ---- Estado del juego ----------------------------------------------------
+let estado = 'inicio';                   // 'inicio' | 'jugando' | 'fin'
+let momentoFin = 0;                      // cuándo terminó la última partida
+// Evita reiniciar por accidente con un toque justo al morir
+const puedeReiniciar = () => performance.now() - momentoFin > 800;
+let vampiro, aldeanos, cazadores, tiempo, mordidas, tSpawn;
+const estrellas = Array.from({ length: 90 }, () => ({ x: azar(0, ANCHO), y: azar(0, ALTO), b: azar(0.3, 1) }));
+
+// Récord guardado en el navegador (puede no estar disponible: try/catch)
+let mejor = 0;
+try { mejor = Number(localStorage.getItem('vampiro-record')) || 0; } catch (_) {}
+function guardarRecord() { try { localStorage.setItem('vampiro-record', String(mejor)); } catch (_) {} }
+
+const puntaje = () => Math.floor(tiempo) + mordidas * 10;   // 1/seg + 10 por mordida
+
+function prepararPartida() {
+  vampiro = new Vampiro();
+  aldeanos = Array.from({ length: MAX_ALDEANOS }, () => new Aldeano());
+  cazadores = [];
+  tiempo = 0; mordidas = 0;
+  tSpawn = 3;                            // primer cazador a los 3 s
+}
+function reiniciar() { prepararPartida(); estado = 'jugando'; }
+
+function actualizar(dt) {
+  if (estado !== 'jugando') return;
+  tiempo += dt;
+  vampiro.actualizar(dt);
+
+  // Cazadores cada vez más frecuentes y rápidos
+  tSpawn -= dt;
+  if (tSpawn <= 0) {
+    cazadores.push(new Cazador(Math.min(200, 90 + tiempo * 1.5)));
+    tSpawn = Math.max(2, 7 - tiempo / 15);
+  }
+  aldeanos.forEach((a) => a.actualizar(dt));
+  cazadores.forEach((c) => c.actualizar(dt));
+
+  // Mordidas
+  aldeanos = aldeanos.filter((a) => {
+    if (largo(resta(a.pos, vampiro.pos)) < Aldeano.RADIO + Vampiro.RADIO) {
+      vampiro.sangre = Math.min(SANGRE_MAX, vampiro.sangre + SANGRE_POR_MORDIDA);
+      mordidas++;
+      return false;
+    }
+    return true;
+  });
+  while (aldeanos.length < MAX_ALDEANOS) aldeanos.push(new Aldeano());
+
+  // Golpes de cazadores (con empujón para no recibir varios seguidos)
+  for (const c of cazadores) {
+    const d = resta(c.pos, vampiro.pos);
+    if (largo(d) < Cazador.RADIO + Vampiro.RADIO && vampiro.recibirGolpe()) {
+      const n = normal(d);
+      c.pos.x += n.x * 60; c.pos.y += n.y * 60;
+    }
+  }
+
+  if (vampiro.sangre <= 0) {             // fin de la partida
+    vampiro.sangre = 0;
+    estado = 'fin';
+    momentoFin = performance.now();
+    if (puntaje() > mejor) { mejor = puntaje(); guardarRecord(); }
+  }
+}
+
+// ---- Dibujo --------------------------------------------------------------
+function dibujarFondo() {
+  ctx.fillStyle = '#0b0916';
+  ctx.fillRect(0, 0, ANCHO, ALTO);
+  for (const e of estrellas) {
+    ctx.fillStyle = `rgba(239,233,225,${e.b})`;
+    ctx.fillRect(e.x, e.y, 1.5, 1.5);
+  }
+  circulo(ANCHO - 80, 80, 40, '#e8e4c9');   // luna
+}
+
+function dibujarHud() {
+  ctx.fillStyle = '#2a2440';             // barra de sangre
+  ctx.fillRect(20, 20, 204, 24);
+  ctx.fillStyle = '#c8142a';
+  ctx.fillRect(22, 22, 200 * vampiro.sangre / SANGRE_MAX, 20);
+  texto('Sangre', 236, 32, 18, '#efe9e1', 'cuerpo', 'left');
+  texto(`Tiempo ${Math.floor(tiempo)} s   ·   Mordidas ${mordidas}   ·   Puntos ${puntaje()}`,
+        20, 62, 16, '#8c86a3', 'cuerpo', 'left');
+}
+
+function dibujarJoystick() {             // anillo y pulgar del joystick virtual
+  if (!joystick.activo) return;
+  const r = lienzo.getBoundingClientRect();
+  const o = { x: (joystick.origen.x - r.left) / escala, y: (joystick.origen.y - r.top) / escala };
+  let d = resta(joystick.actual, joystick.origen);
+  const l = largo(d);
+  if (l > RADIO_JOY) d = { x: d.x / l * RADIO_JOY, y: d.y / l * RADIO_JOY };
+  ctx.strokeStyle = 'rgba(239,233,225,.35)'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.arc(o.x, o.y, RADIO_JOY / escala, 0, Math.PI * 2); ctx.stroke();
+  circulo(o.x + d.x / escala, o.y + d.y / escala, 18 / escala, 'rgba(200,20,42,.6)');
+}
+
+function pantallaVelo() {                // oscurecer el fondo para los menús
+  ctx.fillStyle = 'rgba(0,0,0,.65)';
+  ctx.fillRect(0, 0, ANCHO, ALTO);
+}
+
+function dibujar() {
+  dibujarFondo();
+  if (estado === 'inicio') {
+    pantallaVelo();
+    texto('Vampiro', ANCHO / 2, 170, 110, '#c8142a', 'display');
+    texto('Muerde aldeanos para no quedarte sin sangre.', ANCHO / 2, 270, 22, '#efe9e1');
+    texto('Esquiva a los cazadores: cada vez son más.', ANCHO / 2, 304, 22, '#efe9e1');
+    texto('Arrastra el dedo para moverte · botón Murciélago para escapar', ANCHO / 2, 360, 17, '#8c86a3');
+    texto('(teclado: flechas/WASD y ESPACIO)', ANCHO / 2, 388, 15, '#8c86a3');
+    texto('Toca para empezar', ANCHO / 2, 470, 30, '#e8e4c9', 'display');
+    if (mejor) texto(`Récord: ${mejor}`, ANCHO / 2, 520, 18, '#8c86a3');
+    return;
+  }
+  aldeanos.forEach((a) => a.dibujar());
+  cazadores.forEach((c) => c.dibujar());
+  vampiro.dibujar();
+  dibujarHud();
+  dibujarJoystick();
+  if (estado === 'fin') {
+    pantallaVelo();
+    texto('Amaneció…', ANCHO / 2, ALTO / 2 - 80, 90, '#c8142a', 'display');
+    texto(`Puntos: ${puntaje()}     Récord: ${mejor}`, ANCHO / 2, ALTO / 2, 26, '#efe9e1');
+    texto('Toca para volver a la noche', ANCHO / 2, ALTO / 2 + 70, 30, '#e8e4c9', 'display');
+  }
+}
+
+// ---- Bucle principal -----------------------------------------------------
+let ultimo = performance.now();
+function bucle(ahora) {
+  const dt = Math.min(0.05, (ahora - ultimo) / 1000);   // limitar saltos (pestaña en segundo plano)
+  ultimo = ahora;
+  actualizar(dt);
+  dibujar();
+  requestAnimationFrame(bucle);
+}
+
+prepararPartida();
+ajustarTamano();
+// Redibujar cuando cargue la fuente del título
+if (document.fonts) document.fonts.ready.then(dibujar);
+requestAnimationFrame(bucle);
+</script>
