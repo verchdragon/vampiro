@@ -74,6 +74,20 @@
   .poder:disabled { opacity: .55; }
   #btn-murcielago { --color: var(--sangre); }
   #btn-niebla { --color: var(--niebla); }
+  /* Botón de silenciar: abajo a la izquierda */
+  #btn-sonido {
+    position: fixed;
+    left: calc(16px + env(safe-area-inset-left, 0px));
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(239,233,225,.35);
+    background: rgba(20,16,30,.6);
+    display: grid; place-items: center;
+    touch-action: none;
+  }
+  #btn-sonido svg { width: 26px; height: 26px; fill: none; stroke: var(--hueso); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #btn-sonido:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
   @media (prefers-reduced-motion: reduce) { .poder { transition: none; } }
 </style>
 
@@ -95,6 +109,14 @@
     </span>
   </button>
 </div>
+
+<button id="btn-sonido" type="button" aria-label="Silenciar sonido">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 9h4l5-4v14l-5-4H4z"/>
+    <g id="icono-ondas"><path d="M16.5 8.5a5 5 0 0 1 0 7"/><path d="M19 6a8.5 8.5 0 0 1 0 12"/></g>
+    <g id="icono-mute" style="display:none"><path d="M16 9l6 6M22 9l-6 6"/></g>
+  </svg>
+</button>
 
 <script>
 /* =====================================================================
@@ -143,6 +165,178 @@ function puntoEnBorde() {               // lugar de aparición de cazadores
   return { x: ANCHO - 15, y: azar(0, ALTO) };
 }
 
+// ---- Sonido y música (Web Audio, todo sintetizado, sin archivos) ----------
+// El navegador solo deja sonar audio después de que el jugador toca la pantalla,
+// por eso Sonido.iniciar() se llama en el primer toque o tecla.
+const Sonido = {
+  ctx: null,
+  silencio: false,
+  paso: 0,                               // paso actual de la música (corcheas)
+  proximo: 0,                            // momento del siguiente paso programado
+  tLatido: 0,                            // cuenta regresiva del latido
+
+  iniciar() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;                     // navegador sin audio: el juego sigue sin sonido
+    const c = this.ctx = new AC();
+    // Mezcla: efectos y música por separado hacia un volumen maestro
+    this.maestro = c.createGain();
+    this.maestro.gain.value = this.silencio ? 0 : 0.8;
+    this.maestro.connect(c.destination);
+    this.efectos = c.createGain(); this.efectos.gain.value = 0.7; this.efectos.connect(this.maestro);
+    this.musica = c.createGain(); this.musica.gain.value = 0.3; this.musica.connect(this.maestro);
+    // Eco sombrío para la música (retardo con realimentación filtrada)
+    const eco = c.createDelay(); eco.delayTime.value = 0.36;
+    const reali = c.createGain(); reali.gain.value = 0.32;
+    const filtro = c.createBiquadFilter(); filtro.type = 'lowpass'; filtro.frequency.value = 1800;
+    this.musica.connect(eco); eco.connect(filtro); filtro.connect(reali); reali.connect(eco);
+    filtro.connect(this.maestro);
+    // Búfer de ruido blanco reutilizable (mordidas, aleteos, niebla)
+    this.ruidoBuf = c.createBuffer(1, c.sampleRate, c.sampleRate);
+    const datos = this.ruidoBuf.getChannelData(0);
+    for (let i = 0; i < datos.length; i++) datos[i] = Math.random() * 2 - 1;
+    this.proximo = c.currentTime + 0.1;
+    setInterval(() => this.programarMusica(), 25);   // programador con margen
+  },
+
+  alternar() {                           // silenciar / activar
+    this.silencio = !this.silencio;
+    try { localStorage.setItem('vampiro-silencio', this.silencio ? '1' : '0'); } catch (_) {}
+    if (this.ctx) this.maestro.gain.setTargetAtTime(this.silencio ? 0 : 0.8, this.ctx.currentTime, 0.05);
+    pintarBotonSonido();
+  },
+
+  // Nota simple con envolvente (ataque rápido, caída exponencial)
+  tono(freq, dur, { tipo = 'sine', vol = 0.3, cuando = 0, hasta = null, destino = null } = {}) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime + cuando;
+    const o = c.createOscillator(), g = c.createGain();
+    o.type = tipo;
+    o.frequency.setValueAtTime(freq, t);
+    if (hasta) o.frequency.exponentialRampToValueAtTime(hasta, t + dur);   // deslizamiento de tono
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(destino || this.efectos);
+    o.start(t); o.stop(t + dur + 0.05);
+  },
+
+  // Ráfaga de ruido filtrado (con barrido opcional de frecuencia)
+  ruido(dur, { freq = 1000, hasta = null, tipo = 'bandpass', vol = 0.3, cuando = 0, q = 1 } = {}) {
+    if (!this.ctx) return;
+    const c = this.ctx, t = c.currentTime + cuando;
+    const src = c.createBufferSource(); src.buffer = this.ruidoBuf;
+    const f = c.createBiquadFilter(); f.type = tipo; f.Q.value = q;
+    f.frequency.setValueAtTime(freq, t);
+    if (hasta) f.frequency.exponentialRampToValueAtTime(hasta, t + dur);
+    const g = c.createGain();
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(f); f.connect(g); g.connect(this.efectos);
+    src.start(t); src.stop(t + dur + 0.05);
+  },
+
+  // ---- Efectos del juego ----
+  mordida() {
+    this.ruido(0.18, { freq: 700, hasta: 200, tipo: 'lowpass', vol: 0.5 });
+    this.tono(220, 0.2, { tipo: 'triangle', hasta: 90, vol: 0.35 });
+    this.tono(520, 0.12, { tipo: 'sine', vol: 0.12, cuando: 0.06 });   // pequeño "glup"
+  },
+  golpe() {
+    this.tono(130, 0.35, { tipo: 'square', hasta: 45, vol: 0.25 });
+    this.ruido(0.25, { freq: 400, tipo: 'lowpass', vol: 0.5 });
+  },
+  murcielago() {
+    this.ruido(0.35, { freq: 2600, hasta: 500, vol: 0.45, q: 3 });
+    for (let i = 0; i < 3; i++) this.ruido(0.05, { freq: 1200, vol: 0.25, cuando: i * 0.08 });   // aleteos
+  },
+  eliminar() {
+    this.tono(520, 0.15, { tipo: 'triangle', hasta: 1300, vol: 0.25 });
+    this.tono(980, 0.18, { tipo: 'sine', vol: 0.12, cuando: 0.05 });
+    this.ruido(0.12, { freq: 3000, vol: 0.15 });
+  },
+  niebla() {
+    this.ruido(1.1, { freq: 300, hasta: 3000, vol: 0.5, q: 0.7 });
+    this.tono(110, 1.0, { tipo: 'sawtooth', hasta: 40, vol: 0.18 });
+    this.tono(165, 1.0, { tipo: 'sawtooth', hasta: 60, vol: 0.12 });
+  },
+  nieblaLista() {                        // campanita: el poder está cargado
+    [880, 1320].forEach((f, i) => this.tono(f, 0.4, { tipo: 'sine', vol: 0.15, cuando: i * 0.09 }));
+  },
+  cazadorAparece() {                     // cuerno grave y lejano
+    this.tono(98, 0.5, { tipo: 'sawtooth', vol: 0.05 });
+    this.tono(147, 0.5, { tipo: 'triangle', vol: 0.05 });
+  },
+  latido() {                             // "pum-pum" cuando queda poca sangre
+    this.tono(65, 0.15, { tipo: 'sine', hasta: 40, vol: 0.6 });
+    this.tono(60, 0.15, { tipo: 'sine', hasta: 38, vol: 0.45, cuando: 0.18 });
+  },
+  amanecer() {                           // acorde mayor ascendente: ¡victoria!
+    [523, 659, 784, 1047].forEach((f, i) => this.tono(f, 0.9, { tipo: 'triangle', vol: 0.18, cuando: i * 0.12 }));
+  },
+  derrota() {                            // notas menores que bajan
+    [440, 415, 392, 330].forEach((f, i) => this.tono(f, 0.6, { tipo: 'triangle', vol: 0.2, cuando: i * 0.25 }));
+    this.tono(110, 1.6, { tipo: 'sawtooth', hasta: 55, vol: 0.1, cuando: 0.9 });
+  },
+
+  // ---- Música: arpegio de clavecín sobre bajo en La menor armónica ----
+  // Acordes (MIDI): Am, F, Dm, Mi mayor; un compás de 8 corcheas cada uno.
+  ACORDES: [[57, 60, 64], [53, 57, 60], [50, 53, 57], [52, 56, 59]],
+  PATRON: [0, 1, 2, 3, 2, 1, 2, 1],      // índice de nota del arpegio (3 = octava)
+
+  programarMusica() {
+    const c = this.ctx;
+    if (!c) return;
+    // En los menús la música baja de volumen; en partida suena completa
+    const objetivo = estado === 'jugando' ? 0.3 : 0.1;
+    this.musica.gain.setTargetAtTime(objetivo, c.currentTime, 0.3);
+    // Más rápida en cada noche
+    const bpm = 96 + Math.min(8, (noche || 1) - 1) * 7;
+    const corchea = 60 / bpm / 2;
+    while (this.proximo < c.currentTime + 0.12) {
+      this.tocarPaso(this.paso, this.proximo - c.currentTime, corchea);
+      this.proximo += corchea;
+      this.paso++;
+    }
+  },
+  tocarPaso(paso, cuando, corchea) {
+    const midi = (m) => 440 * Math.pow(2, (m - 69) / 12);
+    const acorde = this.ACORDES[Math.floor(paso / 8) % 4];
+    const i = this.PATRON[paso % 8];
+    const nota = i === 3 ? acorde[0] + 12 : acorde[i];
+    // Clavecín: onda cuadrada corta
+    this.tono(midi(nota + 12), corchea * 1.6, { tipo: 'square', vol: 0.05, cuando, destino: this.musica });
+    // Bajo en los tiempos fuertes
+    if (paso % 4 === 0) this.tono(midi(acorde[0] - 12), corchea * 3.5, { tipo: 'triangle', vol: 0.22, cuando, destino: this.musica });
+    // Colchón de órgano al inicio de cada compás
+    if (paso % 8 === 0) acorde.forEach((n) => this.tono(midi(n), corchea * 8, { tipo: 'sine', vol: 0.04, cuando, destino: this.musica }));
+    // Campana fantasmal cada 4 compases
+    if (paso % 32 === 28) this.tono(midi(acorde[2] + 24), 1.5, { tipo: 'sine', vol: 0.05, cuando, destino: this.musica });
+  },
+
+  // Latido periódico si la sangre está baja (se llama cada cuadro)
+  actualizar(dt) {
+    if (estado !== 'jugando' || vampiro.sangre >= 30) { this.tLatido = 0; return; }
+    this.tLatido -= dt;
+    if (this.tLatido <= 0) { this.latido(); this.tLatido = vampiro.sangre < 15 ? 0.55 : 0.85; }
+  },
+};
+
+// Preferencia de silencio guardada en el navegador
+try { Sonido.silencio = localStorage.getItem('vampiro-silencio') === '1'; } catch (_) {}
+function pintarBotonSonido() {
+  document.getElementById('icono-ondas').style.display = Sonido.silencio ? 'none' : '';
+  document.getElementById('icono-mute').style.display = Sonido.silencio ? '' : 'none';
+  document.getElementById('btn-sonido').setAttribute('aria-label', Sonido.silencio ? 'Activar sonido' : 'Silenciar sonido');
+}
+pintarBotonSonido();
+// Desbloquear el audio con el primer toque o tecla (fase de captura: va antes que todo)
+document.addEventListener('pointerdown', () => Sonido.iniciar(), true);
+window.addEventListener('keydown', () => Sonido.iniciar(), true);
+document.getElementById('btn-sonido').addEventListener('pointerdown', (e) => { e.preventDefault(); Sonido.alternar(); });
+window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'm') Sonido.alternar(); });   // M = silenciar
+
 // ---- Lienzo y escala -----------------------------------------------------
 const lienzo = document.getElementById('lienzo');
 const ctx = lienzo.getContext('2d');
@@ -181,7 +375,7 @@ const joystick = { activo: false, id: null, origen: { x: 0, y: 0 }, actual: { x:
 const RADIO_JOY = 60;                    // px CSS para alcanzar velocidad máxima
 
 document.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('#poderes')) return;          // los botones tienen su propio manejo
+  if (e.target.closest('#poderes, #btn-sonido')) return;          // los botones tienen su propio manejo
   if (estado !== 'jugando') { continuar(); return; } // tocar para empezar / seguir
   if (joystick.activo) return;
   joystick.activo = true;
@@ -331,6 +525,7 @@ class Vampiro {
     if (!this.esMurcielago && this.sangre > COSTO_MURCIELAGO) {
       this.sangre -= COSTO_MURCIELAGO;
       this.tMurc = Vampiro.DUR_MURC;
+      Sonido.murcielago();
       salpicar(this.pos.x, this.pos.y, '#6e2a8c', 10, 120);
     }
   }
@@ -354,6 +549,7 @@ class Vampiro {
     if (this.tInv > 0 || this.esMurcielago) return false;
     this.sangre -= DANO_CAZADOR;
     this.tInv = INVULNERABLE_SEG;
+    Sonido.golpe();
     salpicar(this.pos.x, this.pos.y, '#c8142a', 18);
     return true;
   }
@@ -561,6 +757,7 @@ function continuar() {                   // toque en una pantalla de pausa
 function lanzarNiebla() {
   if (cargaNiebla < MORDIDAS_PARA_NIEBLA) return;
   cargaNiebla = 0;
+  Sonido.niebla();
   ondas.push({ x: vampiro.pos.x, y: vampiro.pos.y, r: 10, max: RADIO_NIEBLA });
   cazadores = cazadores.filter((c) => {
     if (largo(resta(c.pos, vampiro.pos)) < RADIO_NIEBLA) { eliminarCazador(c); return false; }
@@ -569,6 +766,7 @@ function lanzarNiebla() {
 }
 function eliminarCazador(c) {
   eliminados++;
+  Sonido.eliminar();
   salpicar(c.pos.x, c.pos.y, '#9b2fd0', 16);
   salpicar(c.pos.x, c.pos.y, '#3d2a1c', 8, 100);
   textoFlotante(c.pos.x, c.pos.y - 20, '+15', '#d9a6ff');
@@ -584,7 +782,10 @@ function actualizar(dt) {
   // Aparición de cazadores, con un máximo según la noche
   tSpawn -= dt;
   if (tSpawn <= 0) {
-    if (cazadores.length < maxCazadores(noche)) cazadores.push(new Cazador(velCazador(noche, tiempoNoche)));
+    if (cazadores.length < maxCazadores(noche)) {
+      cazadores.push(new Cazador(velCazador(noche, tiempoNoche)));
+      Sonido.cazadorAparece();
+    }
     tSpawn = intervaloSpawn(noche);
   }
   aldeanos.forEach((a) => a.actualizar(dt));
@@ -595,7 +796,9 @@ function actualizar(dt) {
     if (largo(resta(a.pos, vampiro.pos)) < Aldeano.RADIO + Vampiro.RADIO) {
       vampiro.sangre = Math.min(SANGRE_MAX, vampiro.sangre + SANGRE_POR_MORDIDA);
       mordidas++;
+      if (cargaNiebla === MORDIDAS_PARA_NIEBLA - 1) Sonido.nieblaLista();   // se acaba de cargar
       cargaNiebla = Math.min(MORDIDAS_PARA_NIEBLA, cargaNiebla + 1);
+      Sonido.mordida();
       salpicar(a.pos.x, a.pos.y, '#c8142a', 20);
       textoFlotante(a.pos.x, a.pos.y - 20, '+25 sangre', '#ff6b7d');
       return false;
@@ -620,10 +823,12 @@ function actualizar(dt) {
     vampiro.sangre = 0;
     estado = 'fin';
     momentoPausa = performance.now();
+    Sonido.derrota();
     if (puntaje() > mejor) { mejor = puntaje(); guardarRecord(); }
   } else if (tiempoNoche >= DURACION_NOCHE) {   // ¡sobrevivió hasta el amanecer!
     estado = 'amanecer';
     momentoPausa = performance.now();
+    Sonido.amanecer();
     if (puntaje() + 100 > mejor) { mejor = puntaje() + 100; guardarRecord(); }
   }
 }
@@ -750,6 +955,7 @@ function bucle(ahora) {
   const dt = Math.min(0.05, (ahora - ultimo) / 1000);   // limitar saltos (pestaña en segundo plano)
   ultimo = ahora;
   actualizar(dt);
+  Sonido.actualizar(dt);
   dibujar(ahora / 1000);
   actualizarBotones();
   requestAnimationFrame(bucle);
