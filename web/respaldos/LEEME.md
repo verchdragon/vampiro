@@ -10,3 +10,4 @@ Para restaurar: copiar el archivo a `web/index.html`.
 - `vampiro-2026-11-10-v13-antes-personajes.html`: versión 13 (fase 2, escenarios), antes de agregar personajes.
 - `vampiro-2026-11-10-v14-antes-ranking.html`: versión 14 (personajes), antes del ranking en línea.
 - `vampiro-2026-11-10-v18-antes-boton-inicio.html`: con ranking, aviso y traspaso; antes del botón "Inicio" y la ruleta solo con botón.
+- `vampiro-2026-11-10-v19-antes-vueltas.html`: con botón Inicio; antes de la invasión final y la segunda vuelta.
