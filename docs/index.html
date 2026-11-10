@@ -165,6 +165,23 @@
   .articulo.personaje .texto { grid-column: 2; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
   .articulo.personaje button { grid-column: 3; grid-row: 1 / span 2; }
   .nota-tienda { margin: 0; color: #c9c3dc; font-size: 13px; line-height: 1.4; }
+  /* Código de traspaso de progreso (en la tienda) */
+  #codigo-traspaso { width: 100%; box-sizing: border-box; min-height: 74px; padding: 10px 12px; border-radius: 10px;
+    border: 1.5px solid #3a3450; background: #0d0a14; color: var(--hueso); font: 13px/1.4 ui-monospace, monospace;
+    resize: vertical; word-break: break-all; }
+  #codigo-traspaso:focus-visible { outline: 2px solid var(--oro); }
+  /* Aviso en el enlace viejo (Claude): invita a la versión con ranking */
+  #aviso-nuevo {
+    position: fixed;
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    left: calc(14px + env(safe-area-inset-left, 0px));
+    right: calc(150px + env(safe-area-inset-right, 0px));
+    padding: 10px 12px; border-radius: 12px;
+    background: rgba(120,12,30,.92); border: 1.5px solid #ff6b7d; color: #fff;
+    font: 600 13px/1.35 var(--cuerpo); text-decoration: none; display: block;
+  }
+  #aviso-nuevo span { display: block; font-weight: 400; font-size: 12px; opacity: .9; }
+  #aviso-nuevo:focus-visible { outline: 3px solid var(--luna); outline-offset: 2px; }
   /* Botón de ranking (arriba a la derecha, solo en menús) */
   #btn-ranking {
     position: fixed;
@@ -349,6 +366,10 @@
 </div>
 
 <button id="btn-tienda" type="button" hidden><span class="moneda"></span> Tienda</button>
+<a id="aviso-nuevo" href="https://verchdragon.github.io/vampiro/" target="_blank" rel="noopener" hidden>
+  ¡Nueva versión con ranking! Ábrela aquí →
+  <span>Lleva tu progreso con el código de la Tienda.</span>
+</a>
 <button id="btn-ranking" type="button" hidden>
   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v3h4v3a5 5 0 0 1-5 5h-.4A5 5 0 0 1 13 16.9V19h3v2H8v-2h3v-2.1A5 5 0 0 1 8.4 14H8a5 5 0 0 1-5-5V6h4zm0 5H5v1a3 3 0 0 0 2 2.8zm12 0h-2v3.8A3 3 0 0 0 19 9z"/></svg>
   Ranking
@@ -382,6 +403,12 @@
     <div id="lista-personajes" class="tienda-caja"></div>
     <h3>Mejoras</h3>
     <div id="lista-mejoras" class="tienda-caja"></div>
+    <h3>Traspasar progreso</h3>
+    <p class="nota-tienda">¿Cambias de enlace o de celular? Copia tu código aquí y pégalo en la Tienda del otro.
+      Se llevan monedas, mejoras, personajes y la partida guardada. Nunca pierdes nada: se queda lo mayor de cada uno.</p>
+    <div class="fila-nombre"><button type="button" id="copiar-codigo">Copiar mi código</button><button type="button" id="cargar-codigo">Cargar código pegado</button></div>
+    <textarea id="codigo-traspaso" rows="3" spellcheck="false" autocomplete="off" placeholder="Aquí aparece tu código, o pega aquí el código del otro enlace" aria-label="Código de traspaso"></textarea>
+    <p class="error-nombre" id="msg-traspaso"></p>
     <button id="cerrar-tienda" type="button">Volver al juego</button>
   </div>
 </div>
@@ -866,7 +893,7 @@ async function mantenerEncendida() {
 const teclas = new Set();
 window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
-  if (e.target.closest && e.target.closest('input')) return;   // escribiendo el nombre: no mover ni usar poderes
+  if (e.target.closest && e.target.closest('input, textarea')) return;   // escribiendo: no mover ni usar poderes
   teclas.add(k);
   if (k === ' ') { e.preventDefault(); accionMurcielago(); }
   if (k === 'e') accionNiebla();
@@ -875,7 +902,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'g') lanzarHielo();
   if (k === 'c') convertirSiervo();
   if (k === 'p') { if (estado === 'jugando') pausar(); else if (estado === 'pausa') reanudar(); }
-  if (e.target.closest && e.target.closest('input')) return;   // escribiendo el nombre
+  if (e.target.closest && e.target.closest('input, textarea')) return;   // escribiendo
   if ((k === 'r' || k === 'enter') && tiendaEl.hidden && rankingEl.hidden) {
     if (estado === 'ruleta') jugarNoche();
     else if (estado === 'pausa') reanudar();
@@ -2983,6 +3010,8 @@ function actualizarBotones() {
   // Botón de la tienda: solo en los menús y con la tienda cerrada (no en la ruleta ni en la escena del ataúd)
   btnTienda.hidden = ['jugando', 'pausa', 'ruleta'].includes(estado) || !tiendaEl.hidden || !rankingEl.hidden || (estado === 'amanecer' && tAmanecer <= DURACION_ESCENA);
   document.getElementById('btn-ranking').hidden = btnTienda.hidden;   // en los mismos menús que la tienda
+  // Aviso de la versión nueva: solo en el enlace de Claude, en la pantalla de inicio
+  document.getElementById('aviso-nuevo').hidden = !(estado === 'inicio' && Ranking.estado === 'no-disponible' && tiendaEl.hidden && rankingEl.hidden);
   // Botón de pausa: solo jugando
   document.getElementById('btn-pausa').hidden = estado !== 'jugando';
   // Pantalla completa: solo si el navegador la permite y aún no está activa
@@ -3055,6 +3084,7 @@ function pintarTienda() {
 tiendaEl.addEventListener('click', (e) => {
   const b = e.target.closest('button');
   if (!b || b.disabled) return;
+  if (b.id === 'copiar-codigo' || b.id === 'cargar-codigo') return;   // los maneja el traspaso
   if (b.dataset.personaje) {             // comprar personaje (y elegirlo)
     const pj = PERSONAJES.find((x) => x.id === b.dataset.personaje);
     if (progreso.monedas >= pj.precio) { progreso.monedas -= pj.precio; progreso.personajes[pj.id] = true; progreso.personaje = pj.id; Sonido.compra(); }
@@ -3076,6 +3106,64 @@ tiendaEl.addEventListener('click', (e) => {
   pintarTienda();
 });
 btnTienda.addEventListener('click', () => { pintarTienda(); tiendaEl.hidden = false; });
+
+// ---- Código de traspaso: llevar el progreso a otro enlace o celular --------
+// Formato: VAMP1.<datos en base64>.<suma de control>. Al cargarlo se queda lo MAYOR de
+// cada cosa (monedas, niveles, personajes), así que cargarlo dos veces no duplica nada.
+const sumaControl = (t) => { let h = 7; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) % 1000003; return h.toString(36); };
+function crearCodigo() {
+  const datos = { m: progreso.monedas, n: progreso.niveles, p: progreso.personajes, e: progreso.personaje, r: progreso.partida || null };
+  const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(datos)))).replace(/=+$/, '');
+  return `VAMP1.${b64}.${sumaControl(b64)}`;
+}
+function cargarCodigo(texto) {
+  const partes = texto.replace(/\s+/g, '').split('.');
+  if (partes.length !== 3 || partes[0] !== 'VAMP1' || sumaControl(partes[1]) !== partes[2]) return 'El código no es válido o está incompleto. Cópialo de nuevo.';
+  let d;
+  try { d = JSON.parse(decodeURIComponent(escape(atob(partes[1])))); } catch (_) { return 'El código no es válido.'; }
+  // Monedas: la cantidad mayor (con un tope razonable)
+  progreso.monedas = Math.max(progreso.monedas, Math.min(100000, Math.floor(Number(d.m) || 0)));
+  // Mejoras: el nivel mayor de cada una, sin pasar del máximo
+  for (const m of MEJORAS) {
+    const n = Math.floor(Number(d.n && d.n[m.id]) || 0);
+    progreso.niveles[m.id] = Math.max(nivel(m.id), Math.min(m.precios.length, n));
+  }
+  // Personajes: todos los que tenga cualquiera de los dos
+  for (const pj of PERSONAJES) if (d.p && d.p[pj.id] === true) progreso.personajes[pj.id] = true;
+  if (d.e && progreso.personajes[d.e]) progreso.personaje = d.e;
+  // Partida guardada: la que vaya más avanzada
+  const r = d.r;
+  if (r && Number(r.noche) > 1 && Number(r.noche) <= NOCHE_FINAL && (!progreso.partida || Number(r.noche) > progreso.partida.noche)) {
+    progreso.partida = {
+      noche: Math.floor(r.noche), mordidas: Math.floor(Number(r.mordidas) || 0), eliminados: Math.floor(Number(r.eliminados) || 0),
+      tiempoTotal: Number(r.tiempoTotal) || 0, monedasPartida: Math.floor(Number(r.monedasPartida) || 0),
+      mejorCombo: Math.floor(Number(r.mejorCombo) || 0), personaje: PERSONAJES.some((p) => p.id === r.personaje) ? r.personaje : 'vampiro',
+      puntosRun: 0,   // los puntos del ranking no se traspasan (se ganan jugando en el enlace nuevo)
+    };
+  }
+  guardarProgreso();
+  if (estado === 'inicio') personajeActual = hayPartidaGuardada() ? progreso.partida.personaje : progreso.personaje;
+  return null;
+}
+document.getElementById('copiar-codigo').addEventListener('click', () => {
+  const caja = document.getElementById('codigo-traspaso'), msg = document.getElementById('msg-traspaso');
+  caja.value = crearCodigo();
+  // Copiar al portapapeles; si el navegador no deja, queda seleccionado para copiarlo a mano
+  const aMano = () => { caja.focus(); caja.select(); msg.textContent = 'Código listo y seleccionado: cópialo (mantén presionado → Copiar).'; };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(caja.value).then(() => { msg.textContent = '¡Código copiado! Pégalo en la Tienda del otro enlace.'; }, aMano);
+  } else aMano();
+});
+document.getElementById('cargar-codigo').addEventListener('click', () => {
+  const caja = document.getElementById('codigo-traspaso'), msg = document.getElementById('msg-traspaso');
+  if (!caja.value.trim()) { msg.textContent = 'Primero pega aquí el código que copiaste en el otro enlace.'; return; }
+  const problema = cargarCodigo(caja.value);
+  if (problema) { msg.textContent = problema; return; }
+  msg.textContent = '¡Progreso cargado!';
+  caja.value = '';
+  Sonido.compra();
+  pintarTienda();
+});
 
 // ---- Ranking en línea (Firebase: Firestore + inicio de sesión anónimo) -----
 // Funciona en la versión publicada en GitHub Pages. Dentro de Claude la página no
