@@ -194,42 +194,127 @@
   }
   #btn-ranking svg { width: 18px; height: 18px; fill: var(--oro); }
   #btn-ranking:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
-  /* Panel del ranking (mismo estilo que la tienda) */
-  #ranking { position: fixed; inset: 0; background: #08060e; overflow-y: auto;
-    padding-block: calc(20px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-bottom, 0px));
-    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
-    touch-action: pan-y; z-index: 20; }
-  .estado-rank { margin: 0; padding: 10px 12px; border-radius: 10px; background: #17131f; color: #c9c3dc; font-size: 13px; line-height: 1.4; }
-  .estado-rank a { color: var(--oro); }
+  /* ---- Panel del ranking: estética gótica y ligera (solo CSS + SVG en línea) ---- */
+  #ranking { position: fixed; inset: 0; overflow-y: auto; z-index: 20; touch-action: pan-y;
+    background: radial-gradient(120% 60% at 50% 0%, #1a1028 0%, #07050c 60%) #07050c;
+    padding-block: calc(16px + env(safe-area-inset-top, 0px)) 0;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  .rk { max-width: 460px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+  /* Botones y campo del nombre (también los usa la tienda en "Traspasar progreso") */
   .fila-nombre { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .fila-nombre input { flex: 1 1 160px; min-width: 0; padding: 11px 12px; border-radius: 10px; border: 1.5px solid #3a3450;
     background: #0d0a14; color: var(--hueso); font: 600 16px/1 var(--cuerpo); }
   .fila-nombre input:focus-visible { outline: 2px solid var(--oro); }
-  .fila-nombre button, .pestanas button { padding: 10px 14px; border-radius: 10px; border: 1.5px solid var(--oro);
+  .fila-nombre button { padding: 10px 14px; border-radius: 10px; border: 1.5px solid var(--oro);
     background: rgba(240,190,70,.12); color: var(--oro); font: 600 14px/1 var(--cuerpo); }
-  .fila-nombre b { color: var(--hueso); font: 600 18px/1.2 var(--cuerpo); }
+  .fila-nombre button:focus-visible { outline: 3px solid var(--luna); outline-offset: 2px; }
   .error-nombre { margin: 0; color: #ff8a98; font-size: 13px; min-height: 1em; }
-  /* Pestañas: "General" a lo ancho y las 10 noches en dos filas de 5 (todas visibles) */
-  .pestanas { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-  .pestanas button { border-color: #3a3450; color: #c9c3dc; background: transparent; padding: 10px 0; text-align: center; font-variant-numeric: tabular-nums; }
-  .pestanas .periodos { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-  .pestanas .rotulo { grid-column: 1 / -1; margin: 4px 0 -2px; color: #a9a3c2; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
-  .titulo-tabla { margin: 4px 0 0; color: var(--hueso); font: 600 16px/1.3 var(--cuerpo); }
-  .pestanas button[aria-pressed="true"] { border-color: var(--oro); color: var(--oro); background: rgba(240,190,70,.12); }
-  .tabla-rank { display: flex; flex-direction: column; gap: 6px; }
-  .fila-rank { display: grid; grid-template-columns: 28px 30px 1fr auto; gap: 10px; align-items: center;
-    padding: 8px 12px; border-radius: 10px; background: #17131f; border: 1px solid #2a2440; }
-  .fila-rank.mia { border-color: var(--oro); background: rgba(240,190,70,.10); }
-  .fila-rank .pos { font: 600 15px/1 var(--cuerpo); color: #a9a3c2; text-align: right; font-variant-numeric: tabular-nums; }
-  .fila-rank:nth-child(1) .pos { color: #f0be46; } .fila-rank:nth-child(2) .pos { color: #d6d6e0; } .fila-rank:nth-child(3) .pos { color: #d79a5a; }
-  .fila-rank canvas { width: 30px; height: 30px; border-radius: 7px; background: #0d0a14; }
-  .fila-rank .nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--hueso); font: 600 15px/1.2 var(--cuerpo); }
-  .fila-rank .pts { color: var(--oro); font: 600 16px/1 var(--cuerpo); font-variant-numeric: tabular-nums; }
-  .mis-records { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; }
-  .mis-records div { padding: 8px 10px; border-radius: 10px; background: #17131f; border: 1px solid #2a2440; font-size: 12px; color: #a9a3c2; }
-  .mis-records b { display: block; color: var(--hueso); font: 600 16px/1.3 var(--cuerpo); font-variant-numeric: tabular-nums; }
-  #cerrar-ranking { margin-top: 8px; padding: 14px; border-radius: 12px; border: 0; background: var(--sangre); color: #fff; font: 600 17px/1 var(--cuerpo); }
-  #cerrar-ranking:focus-visible, .pestanas button:focus-visible, .fila-nombre button:focus-visible { outline: 3px solid var(--luna); outline-offset: 2px; }
+  /* 1. Encabezado con luna, castillo y niebla */
+  .rk-cabecera { position: relative; overflow: hidden; isolation: isolate; border-radius: 20px;
+    padding: 22px 18px 18px; min-height: 140px; box-sizing: border-box;
+    background: linear-gradient(180deg, #1d1233 0%, #110b1e 65%, #0b0814 100%);
+    border: 1px solid rgba(240,190,70,.2); box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+  .rk-fondo { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; }
+  .rk-cabecera h2 { margin: 0; font: 400 54px/1 var(--display); color: var(--oro);
+    text-shadow: 0 3px 0 #3a0a10, 0 0 22px rgba(240,190,70,.25); }
+  .rk-sub { margin: 6px 0 0; color: #d9d1ec; font: 400 14px/1.35 var(--cuerpo); max-width: 70%; }
+  .rk-estado { margin: 14px 0 0; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; box-sizing: border-box;
+    padding: 7px 12px; border-radius: 999px; background: rgba(0,0,0,.5); color: #ddd6ee; font: 400 12px/1.35 var(--cuerpo); }
+  .rk-estado::before { content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none; background: var(--tono, #6f6888);
+    box-shadow: 0 0 8px var(--tono, transparent); }
+  .rk-estado[data-tono="ok"] { --tono: #7fd69d; }
+  .rk-estado[data-tono="aviso"] { --tono: #f0be46; }
+  .rk-estado[data-tono="error"] { --tono: #ff6b7d; }
+  .rk-estado a { color: var(--oro); font-weight: 600; }
+  /* 2. Tarjeta "Tu vampiro" */
+  .rk-tarjeta { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 20px;
+    background: linear-gradient(155deg, rgba(200,20,42,.22) 0%, rgba(22,15,32,.95) 42%, #120d1c 100%);
+    border: 1px solid rgba(240,190,70,.38); box-shadow: 0 10px 26px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.05); }
+  .rk-yo { display: flex; gap: 14px; align-items: center; }
+  #avatar-rank { width: 60px; height: 60px; flex: none; border-radius: 16px;
+    background: radial-gradient(circle at 50% 38%, #3a2140, #0d0a14 75%); border: 1.5px solid rgba(240,190,70,.5);
+    box-shadow: 0 0 18px rgba(200,20,42,.25); }
+  .rk-yo-datos { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .rk-etiqueta { font: 600 11px/1 var(--cuerpo); letter-spacing: .16em; text-transform: uppercase; color: #b3abcb; }
+  #fila-nombre { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  #fila-nombre .rk-nombre { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font: 600 22px/1.15 var(--cuerpo); color: var(--hueso); }
+  #fila-nombre input { flex: 1 1 140px; min-width: 0; padding: 11px 12px; border-radius: 12px; border: 1.5px solid #4a4060;
+    background: rgba(0,0,0,.45); color: var(--hueso); font: 600 16px/1 var(--cuerpo); }
+  #fila-nombre input:focus-visible { outline: 2px solid var(--oro); }
+  .rk-boton-sutil { padding: 7px 12px; border-radius: 999px; border: 1px solid rgba(240,190,70,.55); background: transparent;
+    color: var(--oro); font: 600 13px/1 var(--cuerpo); }
+  .rk-boton-oro { padding: 11px 16px; border-radius: 12px; border: 0; color: #2a1606; font: 600 15px/1 var(--cuerpo);
+    background: linear-gradient(180deg, #f8d986, #c9921c); box-shadow: 0 4px 12px rgba(240,190,70,.25); }
+  .rk-resumen { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .rk-dato { padding: 10px 6px; border-radius: 12px; background: rgba(0,0,0,.38); text-align: center; min-width: 0; }
+  .rk-dato span { display: block; font: 600 10px/1.2 var(--cuerpo); letter-spacing: .1em; text-transform: uppercase; color: #a9a3c2; }
+  .rk-dato b { display: block; margin-top: 5px; font: 600 19px/1.1 var(--cuerpo); color: var(--hueso); font-variant-numeric: tabular-nums;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rk-dato small { display: block; margin-top: 2px; font: 400 11px/1.2 var(--cuerpo); color: #8f88a8; }
+  .rk-dato.oro b { color: var(--oro); }
+  /* 3. Selector: segmentos (hoy, semana, siempre) y chips de noches */
+  .rk-segmentos { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 4px; border-radius: 14px;
+    background: #110c1a; border: 1px solid #2a2440; }
+  .rk-segmentos button { padding: 12px 4px; border-radius: 10px; border: 0; background: transparent; color: #a9a3c2;
+    font: 600 14px/1 var(--cuerpo); }
+  .rk-segmentos button[aria-pressed="true"] { color: var(--oro); background: linear-gradient(180deg, #3d1119, #22070c);
+    box-shadow: inset 0 0 0 1px rgba(240,190,70,.55), 0 4px 14px rgba(200,20,42,.28); }
+  .rk-noches { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .rk-noches > span { flex: none; font: 600 11px/1.2 var(--cuerpo); letter-spacing: .12em; text-transform: uppercase; color: #8f88a8; }
+  .rk-chips { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .rk-chips button { height: 38px; border-radius: 999px; border: 1px solid #2f2944; background: #110c1a; color: #c9c3dc;
+    font: 600 14px/1 var(--cuerpo); font-variant-numeric: tabular-nums; }
+  .rk-chips button[aria-pressed="true"] { background: var(--oro); border-color: var(--oro); color: #2a1606; box-shadow: 0 0 12px rgba(240,190,70,.35); }
+  .rk-segmentos button:focus-visible, .rk-chips button:focus-visible, .rk-boton-sutil:focus-visible, .rk-boton-oro:focus-visible {
+    outline: 3px solid var(--luna); outline-offset: 2px; }
+  /* 4. Tabla principal: podio dorado, plateado y bronce */
+  .rk-titulo { margin: 18px 2px 0; font: 400 28px/1.1 var(--display); color: var(--hueso); text-wrap: balance; }
+  .rk-titulo small { display: block; margin-top: 4px; font: 400 13px/1.3 var(--cuerpo); color: #a9a3c2; }
+  .tabla-rank { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .fila-rank { display: grid; grid-template-columns: 32px 34px 1fr auto; gap: 12px; align-items: center;
+    padding: 10px 14px; border-radius: 14px; background: #110c1a; border: 1px solid #231d33; }
+  .fila-rank .pos { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: #1c1628;
+    color: #a9a3c2; font: 600 14px/1 var(--cuerpo); font-variant-numeric: tabular-nums; }
+  .fila-rank canvas { width: 34px; height: 34px; border-radius: 10px; background: #0d0a14; }
+  .fila-rank .nom { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--hueso); font: 600 16px/1.2 var(--cuerpo); }
+  .fila-rank .tu { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--sangre); color: #fff;
+    font: 600 11px/1.5 var(--cuerpo); font-style: normal; vertical-align: 2px; }
+  .fila-rank .pts { color: var(--hueso); font: 600 20px/1 var(--cuerpo); font-variant-numeric: tabular-nums; }
+  .fila-rank.pos-1 { padding-block: 14px; background: linear-gradient(90deg, rgba(240,190,70,.2), #110c1a 65%); border-color: rgba(240,190,70,.55);
+    box-shadow: 0 0 18px rgba(240,190,70,.12); }
+  .fila-rank.pos-2 { background: linear-gradient(90deg, rgba(200,204,218,.13), #110c1a 65%); border-color: rgba(200,204,218,.35); }
+  .fila-rank.pos-3 { background: linear-gradient(90deg, rgba(208,138,74,.15), #110c1a 65%); border-color: rgba(208,138,74,.4); }
+  .fila-rank.pos-1 .pos { background: radial-gradient(circle at 35% 30%, #fff3c4, #f0be46 48%, #8a5c0c); color: #3a2405; }
+  .fila-rank.pos-2 .pos { background: radial-gradient(circle at 35% 30%, #ffffff, #bfc3cf 48%, #626573); color: #22242c; }
+  .fila-rank.pos-3 .pos { background: radial-gradient(circle at 35% 30%, #ffe2c0, #cf8a4b 48%, #6e3f1a); color: #2a1606; }
+  .fila-rank.pos-1 .pts { color: var(--oro); font-size: 23px; }
+  .fila-rank.pos-1 .nom { font-size: 17px; }
+  .fila-rank.mia { border-color: #ff6b7d; box-shadow: 0 0 0 1px rgba(255,107,125,.35), 0 0 18px rgba(200,20,42,.28); }
+  .rk-vacio { margin: 0; padding: 22px 16px; border-radius: 14px; border: 1px dashed #2f2944; text-align: center;
+    color: #b3abcb; font: 400 14px/1.45 var(--cuerpo); }
+  /* 5. Tus mejores puntos: resumen grande + récords por noche compactos */
+  .rk-h3 { margin: 0 2px 10px; font: 400 28px/1.1 var(--display); color: var(--hueso); }
+  .rk-mejores { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .rk-mejor { padding: 12px 6px; border-radius: 14px; background: #110c1a; border: 1px solid #231d33; text-align: center; }
+  .rk-mejor span { display: block; font: 600 10px/1.2 var(--cuerpo); letter-spacing: .1em; text-transform: uppercase; color: #a9a3c2; }
+  .rk-mejor b { display: block; margin-top: 6px; font: 600 21px/1 var(--cuerpo); color: var(--hueso); font-variant-numeric: tabular-nums; }
+  .rk-mejor.oro { border-color: rgba(240,190,70,.5); background: linear-gradient(180deg, rgba(240,190,70,.12), #110c1a); }
+  .rk-mejor.oro b { color: var(--oro); }
+  .rk-rotulo { margin: 16px 2px 8px; font: 600 11px/1 var(--cuerpo); letter-spacing: .14em; text-transform: uppercase; color: #8f88a8; }
+  .rk-por-noche { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .rk-por-noche div { padding: 8px 2px; border-radius: 10px; background: #0f0b17; border: 1px solid #1f1a2c; text-align: center; min-width: 0; }
+  .rk-por-noche span { display: block; font: 600 10px/1 var(--cuerpo); color: #8f88a8; white-space: nowrap; }
+  .rk-por-noche b { display: block; margin-top: 5px; font: 600 15px/1 var(--cuerpo); color: var(--hueso); font-variant-numeric: tabular-nums; }
+  .rk-por-noche .vacio b { color: #4a4460; }
+  .rk-por-noche .top { border-color: rgba(240,190,70,.55); }
+  .rk-por-noche .top b { color: var(--oro); }
+  /* 6. Botón final: fijo abajo mientras se desplaza */
+  .rk-pie { position: sticky; bottom: 0; margin-top: 2px; padding: 18px 0 calc(14px + env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(180deg, rgba(7,5,12,0), #07050c 45%); }
+  #cerrar-ranking { width: 100%; padding: 16px; border-radius: 16px; border: 0; color: #fff; font: 600 17px/1 var(--cuerpo); letter-spacing: .02em;
+    background: linear-gradient(180deg, #e22a41, #9c0c21); box-shadow: 0 10px 24px rgba(200,20,42,.35), inset 0 1px 0 rgba(255,255,255,.2); }
+  #cerrar-ranking:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
   .opcion {
     padding: 12px; border-radius: 12px; text-align: left;
     background: #17131f; border: 1.5px solid #2a2440; color: var(--hueso);
@@ -401,19 +486,55 @@
 </button>
 
 <div id="ranking" hidden role="dialog" aria-label="Ranking">
-  <div class="tienda-caja">
-    <div class="tienda-cabeza"><h2>Ranking</h2></div>
-    <p class="estado-rank" id="estado-rank">Conectando…</p>
-    <h3>Tu vampiro</h3>
-    <div class="fila-nombre" id="fila-nombre"></div>
-    <p class="error-nombre" id="error-nombre"></p>
-    <h3>Clasificación</h3>
-    <div class="pestanas" id="pestanas-rank"></div>
-    <p class="titulo-tabla" id="titulo-tabla"></p>
-    <div class="tabla-rank" id="tabla-rank"></div>
-    <h3>Tus mejores puntos</h3>
-    <div class="mis-records" id="mis-records"></div>
-    <button id="cerrar-ranking" type="button">Volver al juego</button>
+  <div class="rk">
+    <!-- 1. Encabezado: luna, estrellas, murciélagos, castillo y niebla dibujados en SVG (muy ligero) -->
+    <header class="rk-cabecera">
+      <svg class="rk-fondo" viewBox="0 0 460 150" preserveAspectRatio="xMaxYMax slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="rkHalo"><stop offset="0" stop-color="#f3eccf" stop-opacity=".45"/><stop offset="1" stop-color="#f3eccf" stop-opacity="0"/></radialGradient>
+          <linearGradient id="rkNiebla" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#b9a9d9" stop-opacity="0"/><stop offset="1" stop-color="#b9a9d9" stop-opacity=".16"/></linearGradient>
+        </defs>
+        <circle cx="390" cy="44" r="62" fill="url(#rkHalo)"/>
+        <circle cx="390" cy="44" r="21" fill="#ece5c8" opacity=".9"/>
+        <circle cx="383" cy="39" r="4" fill="#cfc6a4" opacity=".6"/><circle cx="396" cy="52" r="3" fill="#cfc6a4" opacity=".5"/>
+        <g fill="#efe9e1" opacity=".7"><circle cx="250" cy="22" r="1"/><circle cx="300" cy="60" r="1.2"/><circle cx="440" cy="92" r="1"/><circle cx="215" cy="70" r=".9"/><circle cx="330" cy="18" r=".8"/></g>
+        <path d="M318 74c3-3 6-3 8 0 2-3 5-3 8 0-3-1-5 0-8 3-3-3-5-4-8-3zM350 92c2-2 4-2 6 0 2-2 4-2 6 0-2-.5-4 0-6 2-2-2-4-2.5-6-2z" fill="#0b0814" opacity=".8"/>
+        <path d="M0 150V122h20v-8h8v8h14v-26l9-12 9 12v26h14v-10h7v10h8v-6h6v6h12v-18h6v-6h6v6h6v18h10v-30l11-14 11 14v30h8v-8h6v8h18v-22l7-9 7 9v22h22v-6h6v6h7v-10h6v10h40v-18l10-14 10 14v18h36v-8h7v8h46v-6h6v6h14v28z" fill="#07050c"/>
+        <rect y="96" width="460" height="54" fill="url(#rkNiebla)"/>
+      </svg>
+      <h2>Ranking</h2>
+      <p class="rk-sub">Los vampiros más temidos de la noche</p>
+      <p class="rk-estado" id="estado-rank">Conectando…</p>
+    </header>
+
+    <!-- 2. Tu vampiro -->
+    <section class="rk-tarjeta" aria-label="Tu vampiro">
+      <div class="rk-yo">
+        <canvas id="avatar-rank" aria-hidden="true"></canvas>
+        <div class="rk-yo-datos">
+          <span class="rk-etiqueta">Tu vampiro</span>
+          <div id="fila-nombre"></div>
+        </div>
+      </div>
+      <p class="error-nombre" id="error-nombre"></p>
+      <div class="rk-resumen" id="resumen-rank"></div>
+    </section>
+
+    <!-- 3 y 4. Selector y tabla principal -->
+    <section aria-label="Clasificación">
+      <div id="pestanas-rank"></div>
+      <h3 class="rk-titulo" id="titulo-tabla"></h3>
+      <div class="tabla-rank" id="tabla-rank"></div>
+    </section>
+
+    <!-- 5. Tus mejores puntos -->
+    <section aria-label="Tus mejores puntos">
+      <h3 class="rk-h3">Tus mejores puntos</h3>
+      <div id="mis-records"></div>
+    </section>
+
+    <!-- 6. Botón final (fijo abajo) -->
+    <div class="rk-pie"><button id="cerrar-ranking" type="button">Volver al juego</button></div>
   </div>
 </div>
 
@@ -487,7 +608,7 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
-const VERSION = '22 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
+const VERSION = '23 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
 const ANCHO = 540;                       // ancho lógico del mundo
 let ALTO = 960;                          // alto lógico: se ajusta a la forma de la pantalla (900 a 1200)
 const SANGRE_MAX = 100;
@@ -3553,8 +3674,9 @@ const Ranking = {
   // Sube los récords del celular (solo si son mejores) y reserva el nombre
   async sincronizar() {
     const r = progreso.rank;
-    if (this.estado !== 'listo' || !r.nombre || this.ocupado) return;
-    this.ocupado = true;
+    if (this.estado !== 'listo' || !r.nombre) return;
+    if (this.ocupado) { this.otraVez = true; return; }   // ya hay un envío: se repite al terminar
+    this.ocupado = true; this.otraVez = false;
     const { doc, getDoc, writeBatch, serverTimestamp } = this.sdk;
     try {
       const ref = doc(this.db, 'jugadores', this.uid);
@@ -3583,7 +3705,7 @@ const Ranking = {
       await lote.commit();
       await this.sincronizarPeriodos(datos);
       r.pendiente = false; r.nombreOcupado = false;
-      this.cache = {}; this.mensaje = '';
+      this.cache = {}; this.mensaje = ''; this.tPosicion = 0;   // al subir puntos, se recalcula la posición
       guardarProgreso();
     } catch (e) {
       r.pendiente = true; guardarProgreso();
@@ -3594,6 +3716,7 @@ const Ranking = {
     } finally {
       this.ocupado = false;
       pintarRanking(false);
+      if (this.otraVez) { this.otraVez = false; this.sincronizar(); }   // llegaron puntos nuevos mientras enviaba
     }
   },
 
@@ -3631,6 +3754,20 @@ const Ranking = {
     return filas;
   },
 
+  // Posición en el ranking "de siempre": cuenta cuántos tienen más puntos (se guarda 5 minutos)
+  posicion: null, tPosicion: 0,
+  async calcularPosicion() {
+    const total = progreso.rank.mejores.total;
+    if (this.estado !== 'listo' || !total || !this.sdk.getCountFromServer || Date.now() - this.tPosicion < 5 * 60 * 1000) return;
+    this.tPosicion = Date.now();
+    try {
+      const { collection, query, where, getCountFromServer } = this.sdk;
+      const res = await getCountFromServer(query(collection(this.db, 'jugadores'), where('total', '>', total)));
+      this.posicion = res.data().count + 1;
+      pintarRanking(false);
+    } catch (_) { /* sin conexión: se queda el guion */ }
+  },
+
   // ¿El nombre está libre (o ya es mío)?
   async nombreLibre(n) {
     if (this.estado !== 'listo') return true;   // sin conexión: se comprueba al sincronizar
@@ -3646,8 +3783,10 @@ let editandoNombre = false;
 function pintarRanking(recargarTabla = true) {
   if (rankingEl.hidden) return;
   const r = progreso.rank;
-  // Estado de la conexión
+  // Estado de la conexión (el color del puntito indica cómo va)
   const est = document.getElementById('estado-rank');
+  est.dataset.tono = Ranking.estado === 'listo' ? (Ranking.mensaje || r.pendiente || !r.nombre ? 'aviso' : 'ok')
+    : Ranking.estado === 'error' ? 'error' : Ranking.estado === 'no-disponible' ? 'aviso' : '';
   if (Ranking.estado === 'no-disponible') {
     est.innerHTML = `Para competir con tus amigos entra a la nueva versión en línea: <a href="${URL_PAGES}" target="_blank" rel="noopener">abrir el juego con ranking</a>. Guarda ese enlace.`;
   } else if (Ranking.estado === 'cargando' || Ranking.estado === 'apagado') est.textContent = 'Conectando con el ranking…';
@@ -3658,57 +3797,81 @@ function pintarRanking(recargarTabla = true) {
   const fila = document.getElementById('fila-nombre');
   if (!r.nombre || editandoNombre || r.nombreOcupado) {
     fila.innerHTML = `<input id="campo-nombre" maxlength="16" autocomplete="off" placeholder="Nombre de vampiro" aria-label="Nombre de vampiro">
-      <button type="button" id="guardar-nombre">Guardar</button>`;
+      <button type="button" id="guardar-nombre" class="rk-boton-oro">Guardar</button>`;
     const campo = document.getElementById('campo-nombre');
     campo.value = r.nombre || '';
   } else {
-    fila.innerHTML = `<b></b><button type="button" id="cambiar-nombre">Cambiar</button>`;
-    fila.querySelector('b').textContent = r.nombre;      // textContent: el nombre nunca se interpreta como HTML
+    fila.innerHTML = `<span class="rk-nombre"></span><button type="button" id="cambiar-nombre" class="rk-boton-sutil">Cambiar</button>`;
+    fila.querySelector('.rk-nombre').textContent = r.nombre;   // textContent: el nombre nunca se interpreta como HTML
   }
+  // Retrato del personaje elegido
+  dibujarRetrato(document.getElementById('avatar-rank'), progreso.personaje, 60);
+  // Resumen: mejor partida, mejor noche y posición general
+  let mejorN = 0;
+  for (let n = 1; n <= NOCHE_FINAL; n++) if (r.mejores['n' + n] > (r.mejores['n' + mejorN] || 0)) mejorN = n;
+  const pos = Ranking.posicion;
+  document.getElementById('resumen-rank').innerHTML =
+    `<div class="rk-dato oro"><span>Mejor partida</span><b>${r.mejores.total || '—'}</b></div>` +
+    `<div class="rk-dato"><span>Mejor noche</span><b>${mejorN ? r.mejores['n' + mejorN] : '—'}</b>${mejorN ? `<small>Noche ${mejorN}</small>` : ''}</div>` +
+    `<div class="rk-dato"><span>Posición</span><b>${pos ? '#' + pos : '—'}</b>${pos ? '<small>de siempre</small>' : ''}</div>`;
+  Ranking.calcularPosicion();
   // Pestañas: General y las 10 noches
   // Pestañas: "General" a lo ancho y debajo las noches 1 a 10 (dos filas de 5)
   document.getElementById('pestanas-rank').innerHTML =
-    `<div class="periodos">` +
+    `<div class="rk-segmentos">` +
     [['hoy', 'Hoy'], ['semana', 'Esta semana'], ['total', 'De siempre']].map(([k, t]) =>
       `<button type="button" data-tabla="${k}" aria-pressed="${tablaRank === k}">${t}</button>`).join('') + `</div>` +
-    `<span class="rotulo">Por noche</span>` +
+    `<div class="rk-noches"><span>Por noche</span><div class="rk-chips">` +
     CLAVES_RANK.slice(1).map((k) =>
-      `<button type="button" data-tabla="${k}" aria-pressed="${k === tablaRank}" aria-label="Noche ${k.slice(1)}">${k.slice(1)}</button>`).join('');
+      `<button type="button" data-tabla="${k}" aria-pressed="${k === tablaRank}" aria-label="Noche ${k.slice(1)}">${k.slice(1)}</button>`).join('') +
+    `</div></div>`;
   // Título de la tabla que se está viendo
-  document.getElementById('titulo-tabla').textContent = tablaRank === 'hoy' ? 'Mejores partidas de hoy'
-    : tablaRank === 'semana' ? 'Mejores partidas de esta semana'
-    : tablaRank === 'total' ? 'Mejores partidas de siempre'
-    : `Mejores de la noche ${tablaRank.slice(1)}: ${ESCENARIOS[Number(tablaRank.slice(1)) - 1].nombre}`;
+  const titulo = document.getElementById('titulo-tabla');
+  const [tit, sub] = tablaRank === 'hoy' ? ['Los mejores de hoy', 'Mejores partidas del día']
+    : tablaRank === 'semana' ? ['Los mejores de la semana', 'De lunes a domingo']
+    : tablaRank === 'total' ? ['Los mejores de siempre', 'Mejores partidas de todos los tiempos']
+    : [`Noche ${tablaRank.slice(1)}`, ESCENARIOS[Number(tablaRank.slice(1)) - 1].nombre];
+  titulo.textContent = tit;
+  const pequeno = document.createElement('small'); pequeno.textContent = sub; titulo.appendChild(pequeno);
   // Mis récords (siempre disponibles, aunque no haya internet)
   document.getElementById('mis-records').innerHTML =
-    `<div>Hoy<b>${puntosPeriodo('hoy').pts || '—'}</b></div><div>Esta semana<b>${puntosPeriodo('semana').pts || '—'}</b></div>` +
-    CLAVES_RANK.map((k) => `<div>${k === 'total' ? 'De siempre' : 'Noche ' + k.slice(1)}<b>${r.mejores[k] || '—'}</b></div>`).join('');
+    `<div class="rk-mejores">` +
+      `<div class="rk-mejor"><span>Hoy</span><b>${puntosPeriodo('hoy').pts || '—'}</b></div>` +
+      `<div class="rk-mejor"><span>Semana</span><b>${puntosPeriodo('semana').pts || '—'}</b></div>` +
+      `<div class="rk-mejor oro"><span>De siempre</span><b>${r.mejores.total || '—'}</b></div>` +
+    `</div><p class="rk-rotulo">Récord por noche</p><div class="rk-por-noche">` +
+    CLAVES_RANK.slice(1).map((k) => {
+      const v = r.mejores[k];
+      return `<div class="${!v ? 'vacio' : k === 'n' + mejorN ? 'top' : ''}"><span>Noche ${k.slice(1)}</span><b>${v || '—'}</b></div>`;
+    }).join('') + `</div>`;
   if (recargarTabla) pintarTabla();
 }
 async function pintarTabla() {
   const caja = document.getElementById('tabla-rank');
   if (Ranking.estado !== 'listo') {
-    caja.innerHTML = `<p class="nota-tienda">${Ranking.estado === 'no-disponible' ? 'Las tablas con tus amigos están en la nueva versión en línea.' : 'Las tablas aparecerán cuando haya internet.'}</p>`;
+    caja.innerHTML = `<p class="rk-vacio">${Ranking.estado === 'no-disponible' ? 'Las tablas con tus amigos están en la nueva versión en línea.' : 'Las tablas aparecerán cuando haya internet.'}</p>`;
     return;
   }
-  caja.innerHTML = '<p class="nota-tienda">Cargando…</p>';
+  caja.innerHTML = '<p class="rk-vacio">Cargando…</p>';
   const clave = tablaRank;
   try {
     const filas = await Ranking.leerTabla(clave);
     if (clave !== tablaRank) return;     // el jugador cambió de pestaña mientras cargaba
-    if (!filas.length) { caja.innerHTML = '<p class="nota-tienda">Todavía nadie tiene puntos aquí. ¡Sé el primero!</p>'; return; }
+    if (!filas.length) { caja.innerHTML = '<p class="rk-vacio">Todavía nadie tiene puntos aquí.<br>¡Sé el primer vampiro en reclamar esta noche!</p>'; return; }
     caja.innerHTML = '';
     filas.forEach((f, i) => {
       const div = document.createElement('div');
-      div.className = 'fila-rank' + (f.id === Ranking.uid ? ' mia' : '');
+      const mia = f.id === Ranking.uid;
+      div.className = 'fila-rank' + (i < 3 ? ` pos-${i + 1}` : '') + (mia ? ' mia' : '');   // podio: oro, plata y bronce
       div.innerHTML = `<span class="pos">${i + 1}</span><canvas></canvas><span class="nom"></span><span class="pts"></span>`;
       div.querySelector('.nom').textContent = f.nombre;   // nombres de otros: siempre como texto
+      if (mia) { const tu = document.createElement('em'); tu.className = 'tu'; tu.textContent = 'Tú'; div.querySelector('.nom').appendChild(tu); }
       div.querySelector('.pts').textContent = f.valor;
-      dibujarRetrato(div.querySelector('canvas'), PERSONAJES.some((p) => p.id === f.personaje) ? f.personaje : 'vampiro', 30);
+      dibujarRetrato(div.querySelector('canvas'), PERSONAJES.some((p) => p.id === f.personaje) ? f.personaje : 'vampiro', 34);
       caja.appendChild(div);
     });
   } catch (e) {
-    caja.innerHTML = '<p class="nota-tienda">No se pudo cargar la tabla. Intenta de nuevo en un momento.</p>';
+    caja.innerHTML = '<p class="rk-vacio">No se pudo cargar la tabla. Intenta de nuevo en un momento.</p>';
   }
 }
 async function guardarNombre() {
