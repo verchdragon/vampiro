@@ -7,3 +7,4 @@
 Para restaurar: copiar el archivo a `web/index.html`.
 - `vampiro-2026-11-10-v12-antes-fase2.html`: versión 12 (ataúd central y vuelo en murciélago),
   guardada antes de la Fase 2 (escenarios y ambientación).
+- `vampiro-2026-11-10-v13-antes-personajes.html`: versión 13 (fase 2, escenarios), antes de agregar personajes.
