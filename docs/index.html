@@ -608,7 +608,7 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
-const VERSION = '25 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
+const VERSION = '26 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
 const ANCHO = 540;                       // ancho lógico del mundo
 let ALTO = 960;                          // alto lógico: se ajusta a la forma de la pantalla (900 a 1200)
 const SANGRE_MAX = 100;
@@ -809,7 +809,9 @@ function puntoEnBorde() {               // lugar de aparición de cazadores
   return { x: ANCHO - 15, y: azar(0, ALTO) };
 }
 
-// ---- Sonido y música (Web Audio, todo sintetizado, sin archivos) ----------
+// ---- Sonido y música (Web Audio) ---------------------------------------------
+// Usa sonidos grabados de licencia libre (CC0, carpeta sonidos/). Si un archivo no
+// carga (sin internet, navegador viejo), ese efecto se toca sintetizado como antes.
 // El navegador solo deja sonar audio después de que el jugador toca la pantalla,
 // por eso Sonido.iniciar() se llama en el primer toque o tecla.
 const Sonido = {
@@ -818,6 +820,8 @@ const Sonido = {
   paso: 0,                               // paso actual de la música (corcheas)
   proximo: 0,                            // momento del siguiente paso programado
   tLatido: 0,                            // cuenta regresiva del latido
+  bufs: {},                              // sonidos grabados ya decodificados (nombre → búfer)
+  pista: null,                           // música grabada sonando: { nombre, fuente }
 
   iniciar() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
@@ -840,7 +844,10 @@ const Sonido = {
     this.ruidoBuf = c.createBuffer(1, c.sampleRate, c.sampleRate);
     const datos = this.ruidoBuf.getChannelData(0);
     for (let i = 0; i < datos.length; i++) datos[i] = Math.random() * 2 - 1;
+    // Canal aparte para la música grabada (sin el eco del clavecín)
+    this.musicaReal = c.createGain(); this.musicaReal.gain.value = 0; this.musicaReal.connect(this.maestro);
     this.proximo = c.currentTime + 0.1;
+    this.cargarArchivos();
     setInterval(() => this.programarMusica(), 25);   // programador con margen
   },
 
@@ -849,6 +856,37 @@ const Sonido = {
     try { localStorage.setItem('vampiro-silencio', this.silencio ? '1' : '0'); } catch (_) {}
     if (this.ctx) this.maestro.gain.setTargetAtTime(this.silencio ? 0 : 0.8, this.ctx.currentTime, 0.05);
     pintarBotonSonido();
+  },
+
+  // Lista de archivos grabados. Primero los efectos (pesan poco) y al final la música.
+  ARCHIVOS: ['mordida', 'golpe', 'murcielago', 'eliminar', 'lanzar', 'estaca', 'hielo', 'ataud-abre',
+    'ataud-cierra', 'moneda', 'compra', 'poder', 'campana', 'amanecer', 'victoria', 'derrota', 'noche', 'jefe'],
+
+  // Descarga y decodifica cada archivo; los que fallen se quedan con el sonido sintetizado
+  async cargarArchivos() {
+    for (const n of this.ARCHIVOS) {
+      try {
+        const r = await fetch('sonidos/' + n + '.mp3');
+        if (!r.ok) continue;
+        const datos = await r.arrayBuffer();
+        // decodeAudioData con promesa y, para Safari viejo, con funciones de retorno
+        this.bufs[n] = await new Promise((ok, mal) => this.ctx.decodeAudioData(datos, ok, mal));
+      } catch (_) { /* sin ese archivo: se usa el sintetizado */ }
+    }
+  },
+
+  // Toca un sonido grabado. Devuelve false si no está cargado (para usar el sintetizado).
+  // vol: volumen; variar: cambia un poco el tono para que no suene siempre idéntico.
+  reproducir(nombre, { vol = 1, variar = 0.06, cuando = 0 } = {}) {
+    const b = this.bufs[nombre];
+    if (!this.ctx || !b) return false;
+    const src = this.ctx.createBufferSource(), g = this.ctx.createGain();
+    src.buffer = b;
+    src.playbackRate.value = 1 + (Math.random() * 2 - 1) * variar;
+    g.gain.value = vol;
+    src.connect(g); g.connect(this.efectos);
+    src.start(this.ctx.currentTime + cuando);
+    return true;
   },
 
   // Nota simple con envolvente (ataque rápido, caída exponencial)
@@ -1014,6 +1052,18 @@ const Sonido = {
     if (!c) return;
     // En los menús la música baja de volumen; en partida suena completa
     const objetivo = estado === 'jugando' ? 0.3 : 0.1;
+    // ¿Hay música grabada? En la pelea con el jefe cambia a su pista
+    const hayJefe = estado === 'jugando' && cazadores.some((z) => z.tipo === 'jefe');
+    const quiero = hayJefe && this.bufs.jefe ? 'jefe' : (this.bufs.noche ? 'noche' : null);
+    if (quiero) {
+      if (!this.pista || this.pista.nombre !== quiero) this.cambiarPista(quiero);
+      // Un poquito más rápida cada noche (máx. +10 %)
+      this.pista.fuente.playbackRate.setTargetAtTime(1 + Math.min(7, (noche || 1) - 1) * 0.015, c.currentTime, 0.5);
+      this.musicaReal.gain.setTargetAtTime(estado === 'jugando' ? 0.55 : 0.18, c.currentTime, 0.3);
+      this.musica.gain.setTargetAtTime(0, c.currentTime, 0.3);   // el arpegio se calla
+      this.proximo = c.currentTime + 0.1;                         // y no acumula notas pendientes
+      return;
+    }
     this.musica.gain.setTargetAtTime(objetivo, c.currentTime, 0.3);
     // Más rápida en cada noche
     const bpm = 96 + Math.min(8, (noche || 1) - 1) * 7;
@@ -1023,6 +1073,22 @@ const Sonido = {
       this.proximo += corchea;
       this.paso++;
     }
+  },
+  // Cambia la música grabada con un pequeño cruce (la anterior se apaga sola)
+  cambiarPista(nombre) {
+    const c = this.ctx;
+    if (this.pista) {
+      const vieja = this.pista;
+      vieja.g.gain.setTargetAtTime(0, c.currentTime, 0.4);
+      vieja.fuente.stop(c.currentTime + 2);
+    }
+    const fuente = c.createBufferSource(), g = c.createGain();
+    fuente.buffer = this.bufs[nombre]; fuente.loop = true;     // se repite sin fin
+    g.gain.setValueAtTime(0.0001, c.currentTime);
+    g.gain.setTargetAtTime(1, c.currentTime, 0.6);             // entra suave
+    fuente.connect(g); g.connect(this.musicaReal);
+    fuente.start();
+    this.pista = { nombre, fuente, g };
   },
   tocarPaso(paso, cuando, corchea) {
     const midi = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -1046,6 +1112,34 @@ const Sonido = {
     if (this.tLatido <= 0) { this.latido(); this.tLatido = vampiro.sangre < 15 ? 0.55 : 0.85; }
   },
 };
+
+// Efectos que tienen grabación: [archivo, volumen, ¿agregar también el sintetizado?]
+// Si el archivo no cargó, se toca el sintetizado original.
+const EFECTOS_GRABADOS = {
+  mordida: ['mordida', 1, true],          // mordisco grabado + "glup" sintetizado
+  golpe: ['golpe', 1, false],
+  murcielago: ['murcielago', 0.9, false],
+  eliminar: ['eliminar', 0.9, false],
+  lanzarEstaca: ['lanzar', 0.6, false],
+  impactoEstaca: ['estaca', 0.9, false],
+  romperHielo: ['hielo', 0.8, false],
+  ataudAbre: ['ataud-abre', 0.8, false],
+  ataudCierra: ['ataud-cierra', 1, false],
+  moneda: ['moneda', 0.5, false],
+  compra: ['compra', 0.7, false],
+  nuevoPoder: ['poder', 0.8, false],
+  jefe: ['campana', 0.9, true],           // campanada + cuernos sintetizados
+  amanecer: ['amanecer', 0.8, false],
+  victoria: ['victoria', 0.8, false],
+  derrota: ['derrota', 0.8, false],
+};
+for (const [efecto, [archivo, vol, mezclar]] of Object.entries(EFECTOS_GRABADOS)) {
+  const sintetizado = Sonido[efecto];
+  Sonido[efecto] = function (...args) {
+    const sono = this.reproducir(archivo, { vol });
+    if (!sono || mezclar) sintetizado.apply(this, args);
+  };
+}
 
 // Preferencia de silencio guardada en el navegador
 try { Sonido.silencio = localStorage.getItem('vampiro-silencio') === '1'; } catch (_) {}
