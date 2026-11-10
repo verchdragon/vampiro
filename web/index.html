@@ -1,5 +1,4 @@
 <title>Vampiro</title>
-<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Pirata+One&family=Rubik:wght@400;600&display=swap">
 <style>
   /* Diseño: un solo mundo nocturno (sin tema claro); el lienzo ocupa toda la pantalla
@@ -15,7 +14,7 @@
     --cuerpo: "Rubik", system-ui, sans-serif;
     color-scheme: dark;
   }
-  html, body { height: 100%; }
+  html, body { height: 100%; overscroll-behavior: none; }   /* sin "jalar para recargar" */
   body {
     background: var(--noche);
     color: var(--hueso);
@@ -26,16 +25,14 @@
     -webkit-user-select: none;
     -webkit-touch-callout: none;
   }
+  /* El juego ocupa toda la pantalla (de orilla a orilla) */
   #escena {
     position: relative;
     height: 100%;
     display: grid;
     place-items: center;
-    padding-left: max(16px, env(safe-area-inset-left, 0px));
-    padding-right: max(16px, env(safe-area-inset-right, 0px));
-    box-sizing: border-box;
   }
-  canvas { display: block; border-radius: 6px; box-shadow: 0 0 0 1px #2a2440; }
+  canvas { display: block; }
 
   /* Columna de botones de poderes (abajo a la derecha) */
   #poderes {
@@ -184,6 +181,29 @@
     touch-action: none;
   }
   #btn-pausa svg { width: 22px; height: 22px; fill: var(--hueso); }
+  /* Botón de pantalla completa: arriba del de sonido (no tapa la tienda) */
+  #btn-pantalla {
+    position: fixed;
+    left: calc(16px + env(safe-area-inset-left, 0px));
+    bottom: calc(84px + env(safe-area-inset-bottom, 0px));
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(239,233,225,.35);
+    background: rgba(20,16,30,.6);
+    display: grid; place-items: center;
+    touch-action: none;
+  }
+  #btn-pantalla svg { width: 24px; height: 24px; fill: none; stroke: var(--hueso); stroke-width: 2.2; stroke-linecap: round; }
+  #btn-pantalla:focus-visible, #btn-nueva:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
+  /* "Empezar de nuevo" (cuando hay una partida guardada), arriba del botón de la tienda */
+  #btn-nueva {
+    position: fixed;
+    left: 50%; transform: translateX(-50%);
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+    padding: 11px 22px; border-radius: 999px;
+    border: 1.5px solid rgba(239,233,225,.4); background: rgba(20,16,30,.8);
+    color: var(--hueso); font: 600 15px/1 var(--cuerpo);
+  }
   #btn-pausa:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
   #btn-sonido {
     position: fixed;
@@ -272,6 +292,11 @@
   <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg>
 </button>
 
+<button id="btn-pantalla" type="button" aria-label="Pantalla completa" hidden>
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
+</button>
+<button id="btn-nueva" type="button" hidden>Empezar de nuevo</button>
+
 <button id="btn-sonido" type="button" aria-label="Silenciar sonido">
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M4 9h4l5-4v14l-5-4H4z"/>
@@ -297,7 +322,8 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
-const ANCHO = 540, ALTO = 960;           // tamaño lógico del mundo (vertical 9:16)
+const ANCHO = 540;                       // ancho lógico del mundo
+let ALTO = 960;                          // alto lógico: se ajusta a la forma de la pantalla (900 a 1200)
 const SANGRE_MAX = 100;
 const PERDIDA_SANGRE_SEG = 3.5;          // sangre perdida por segundo
 const SANGRE_POR_MORDIDA = 25;
@@ -648,11 +674,11 @@ const ctx = lienzo.getContext('2d');
 let escala = 1;                          // píxeles CSS por unidad del mundo
 
 function ajustarTamano() {
-  // Mayor tamaño que quepa manteniendo la proporción 9:16
+  // El mundo mide 540 de ancho y su alto se estira para llenar la pantalla del celular
   const cont = document.getElementById('escena');
-  const estilo = getComputedStyle(cont);
-  const disponibleX = cont.clientWidth - parseFloat(estilo.paddingLeft) - parseFloat(estilo.paddingRight);
-  const disponibleY = cont.clientHeight - 16;
+  const disponibleX = cont.clientWidth;
+  const disponibleY = cont.clientHeight;
+  ALTO = Math.round(Math.max(900, Math.min(1200, ANCHO * disponibleY / disponibleX)));
   escala = Math.min(disponibleX / ANCHO, disponibleY / ALTO);
   const dpr = window.devicePixelRatio || 1;
   lienzo.style.width = ANCHO * escala + 'px';
@@ -662,6 +688,22 @@ function ajustarTamano() {
   ctx.setTransform(escala * dpr, 0, 0, escala * dpr, 0, 0);
 }
 window.addEventListener('resize', ajustarTamano);
+// Evita que el navegador use los deslizamientos del dedo (salvo dentro de la tienda, que se desplaza)
+document.addEventListener('touchmove', (e) => { if (!e.target.closest('#tienda')) e.preventDefault(); }, { passive: false });
+
+// Pantalla completa (solo donde el navegador lo permite)
+const btnPantalla = document.getElementById('btn-pantalla');
+btnPantalla.addEventListener('click', () => {
+  const el = document.documentElement;
+  const pedir = el.requestFullscreen || el.webkitRequestFullscreen;
+  if (pedir) Promise.resolve(pedir.call(el)).catch(() => {});
+});
+// Mantener la pantalla encendida mientras se juega (si el navegador lo permite)
+let bloqueoPantalla = null;
+async function mantenerEncendida() {
+  try { if (!bloqueoPantalla && navigator.wakeLock) bloqueoPantalla = await navigator.wakeLock.request('screen'); } catch (_) {}
+  if (bloqueoPantalla) bloqueoPantalla.addEventListener?.('release', () => { bloqueoPantalla = null; });
+}
 
 // ---- Entrada: teclado ----------------------------------------------------
 const teclas = new Set();
@@ -697,7 +739,7 @@ function aMundo(p) {
 }
 
 document.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('#poderes, #btn-sonido, #btn-tienda, #tienda, #ruleta-botones, #btn-pausa')) return;   // los botones tienen su propio manejo
+  if (e.target.closest('#poderes, #btn-sonido, #btn-tienda, #tienda, #ruleta-botones, #btn-pausa, #btn-pantalla, #btn-nueva')) return;   // los botones tienen su propio manejo
   if (estado === 'pausa') { reanudar(); return; }    // tocar para seguir
   if (estado === 'ruleta') { if (ruleta.lista) jugarNoche(); return; }
   if (estado !== 'jugando') { continuar(); return; } // tocar para empezar / seguir
@@ -1444,14 +1486,35 @@ function empezarNoche() {
   monedasNoche = 0;
   combo = 0; tCombo = 0; avisoCombo = null;
   tSpawn = 2.5;
+  guardarPartida();                        // por si el juego se cierra a media noche
   iniciarRuleta();                         // primero la ruleta del poder de la noche
 }
 function continuar() {                   // toque en una pantalla de pausa
   if (!puedeContinuar()) return;
-  if (estado === 'amanecer' && victoria) { nuevaPartida(); estado = 'inicio'; reembolso = 0; }   // ganó: volver al inicio
+  mantenerEncendida();
+  if (estado === 'amanecer' && victoria) { borrarPartida(); nuevaPartida(); estado = 'inicio'; reembolso = 0; }   // ganó: volver al inicio
   else if (estado === 'amanecer') { noche++; empezarNoche(); }
+  else if (estado === 'inicio' && hayPartidaGuardada()) { reembolso = 0; seguirPartida(); }
   else { reembolso = 0; nuevaPartida(); }   // 'inicio' o 'fin'
 }
+
+// La partida se guarda al empezar cada noche: si el juego se cierra, sigues en esa noche
+const hayPartidaGuardada = () => !!(progreso.partida && progreso.partida.noche > 1);
+function guardarPartida() {
+  if (noche <= 1) return;                // la noche 1 no hace falta guardarla (y así no se borra al cargar)
+  progreso.partida = { noche, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo };
+  guardarProgreso();
+}
+function borrarPartida() { progreso.partida = null; guardarProgreso(); }
+function seguirPartida() {
+  ({ noche, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo } = progreso.partida);
+  victoria = false; cargaNiebla = 0;
+  vampiro = new Vampiro();
+  empezarNoche();
+}
+document.getElementById('btn-nueva').addEventListener('click', () => {
+  borrarPartida(); reembolso = 0; mantenerEncendida(); nuevaPartida();
+});
 
 // Onda de niebla: elimina a los cazadores dentro del radio
 // Tiempo de espera restante de cada poder (0 = listo)
@@ -1710,6 +1773,7 @@ function actualizar(dt) {
   if (vampiro.sangre <= 0) {             // derrota
     vampiro.sangre = 0;
     estado = 'fin';
+    borrarPartida();                     // perdiste: la próxima empieza desde la noche 1
     momentoPausa = performance.now();
     Sonido.derrota();
     if (puntaje() > mejor) { mejor = puntaje(); guardarRecord(); }
@@ -1787,6 +1851,7 @@ function dibujarHielo() {
 // Ruleta de poderes: rueda con 4 segmentos y flecha arriba
 function dibujarRuleta() {
   velo('rgba(0,0,0,.72)');
+  ctx.save(); ctx.translate(0, (ALTO - 960) / 2 - 40);   // centrar en pantallas altas
   const [dif, colorDif] = nombreDificultad(noche);
   texto(`Noche ${noche}`, ANCHO / 2, 110, 64, '#e8e4c9', 'display');
   texto(dif, ANCHO / 2, 160, 20, colorDif);
@@ -1815,6 +1880,7 @@ function dibujarRuleta() {
     texto(p.nombre, cx, 622, 46, p.color, 'display');
     texto(p.desc, cx, 658, 15, '#efe9e1');
   }
+  ctx.restore();
 }
 
 // Cartel grande de combo: "COMBO x3  +7"
@@ -1880,6 +1946,7 @@ function dibujar(t) {
   dibujarFondo(t);
   if (estado === 'inicio') {
     velo();
+    ctx.save(); ctx.translate(0, (ALTO - 960) / 2 - 24);   // centrar en pantallas altas
     texto('Vampiro', ANCHO / 2, 150, 100, '#c8142a', 'display');
     texto('Sobrevive cada noche hasta el amanecer.', ANCHO / 2, 232, 19, '#efe9e1');
     leyenda(300);
@@ -1895,8 +1962,9 @@ function dibujar(t) {
     monedasCentradas(622, 24);
     if (reembolso) texto(`Te devolvimos ${reembolso} monedas de poderes comprados`, ANCHO / 2, 656, 13, '#7fd69d');
     texto('Arrastra el dedo como palanca para moverte', ANCHO / 2, 684, 14, '#a9a3c2');
-    texto('Toca para empezar', ANCHO / 2, 744, 36, '#e8e4c9', 'display');
+    texto(hayPartidaGuardada() ? `Toca para seguir en la noche ${progreso.partida.noche}` : 'Toca para empezar', ANCHO / 2, 744, hayPartidaGuardada() ? 30 : 36, '#e8e4c9', 'display');
     if (mejor) texto(`Récord: ${mejor}`, ANCHO / 2, 788, 15, '#a9a3c2');
+    ctx.restore();
     return;
   }
   // Ordenar por altura para que lo de abajo tape lo de arriba
@@ -1972,6 +2040,11 @@ function actualizarBotones() {
   btnTienda.hidden = ['jugando', 'pausa', 'ruleta'].includes(estado) || !tiendaEl.hidden || (estado === 'amanecer' && tAmanecer <= DURACION_ESCENA);
   // Botón de pausa: solo jugando
   document.getElementById('btn-pausa').hidden = estado !== 'jugando';
+  // Pantalla completa: solo si el navegador la permite y aún no está activa
+  const fsPermitida = document.fullscreenEnabled || document.webkitFullscreenEnabled;
+  btnPantalla.hidden = !fsPermitida || !!(document.fullscreenElement || document.webkitFullscreenElement) || !tiendaEl.hidden;
+  // "Empezar de nuevo": en el inicio, si hay una partida guardada
+  document.getElementById('btn-nueva').hidden = !(estado === 'inicio' && hayPartidaGuardada() && tiendaEl.hidden);
   // Ruleta: botones cuando ya se detuvo
   document.getElementById('ruleta-botones').hidden = !(estado === 'ruleta' && ruleta.lista);
   document.getElementById('costo-giro').textContent = costoGiro();
