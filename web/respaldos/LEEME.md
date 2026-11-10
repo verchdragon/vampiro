@@ -13,3 +13,4 @@ Para restaurar: copiar el archivo a `web/index.html`.
 - `vampiro-2026-11-10-v19-antes-vueltas.html`: con botón Inicio; antes de la invasión final y la segunda vuelta.
 - `vampiro-2026-11-10-v21-antes-misiones.html`: versión 21 (vueltas e invasión final), antes de ranking diario, nuevos enemigos y misiones.
 - `vampiro-2026-11-10-v22-antes-rediseno-ranking.html`: versión 22, antes del rediseño visual del ranking.
+- `vampiro-2026-11-10-v24-antes-animaciones.html`: versión 24, antes de las animaciones de personajes.
