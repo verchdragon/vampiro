@@ -286,6 +286,18 @@
     color: var(--hueso); font: 600 15px/1 var(--cuerpo);
   }
   #btn-pausa:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
+  /* Botón "← Inicio" (arriba a la izquierda): en la ruleta y en la pausa */
+  #btn-inicio {
+    position: fixed;
+    top: calc(14px + env(safe-area-inset-top, 0px));
+    left: calc(14px + env(safe-area-inset-left, 0px));
+    padding: 10px 16px; border-radius: 999px;
+    border: 1.5px solid rgba(239,233,225,.45); background: rgba(20,16,30,.85); color: var(--hueso);
+    font: 600 15px/1 var(--cuerpo);
+    display: flex; align-items: center; gap: 8px; z-index: 5;
+  }
+  #btn-inicio svg { width: 18px; height: 18px; fill: none; stroke: var(--hueso); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  #btn-inicio:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
   #btn-sonido {
     position: fixed;
     left: calc(16px + env(safe-area-inset-left, 0px));
@@ -403,6 +415,10 @@
   <button id="btn-regirar" type="button"><span class="moneda"></span> Girar otra vez · <span id="costo-giro">15</span></button>
 </div>
 
+<button id="btn-inicio" type="button" hidden>
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+  Inicio
+</button>
 <button id="btn-pausa" type="button" aria-label="Pausa" hidden>
   <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="5" height="16" rx="1.5"/><rect x="14" y="4" width="5" height="16" rx="1.5"/></svg>
 </button>
@@ -910,9 +926,9 @@ function aMundo(p) {
 }
 
 document.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('#poderes, #btn-sonido, #btn-tienda, #tienda, #ruleta-botones, #btn-pausa, #btn-pantalla, #btn-nueva, #btn-siguiente, #btn-ranking, #ranking')) return;   // los botones tienen su propio manejo
+  if (e.target.closest('#poderes, #btn-sonido, #btn-tienda, #tienda, #ruleta-botones, #btn-pausa, #btn-pantalla, #btn-nueva, #btn-siguiente, #btn-ranking, #ranking, #btn-inicio')) return;   // los botones tienen su propio manejo
   if (estado === 'pausa') { reanudar(); return; }    // tocar para seguir
-  if (estado === 'ruleta') { if (ruleta.lista) jugarNoche(); return; }
+  if (estado === 'ruleta') return;      // en la ruleta solo se entra con el botón "¡A jugar!"
   if (estado !== 'jugando') { continuar(); return; } // tocar para empezar / seguir
   if (joystick.activo) return;
   joystick.activo = true;
@@ -949,7 +965,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && est
 
 function accionMurcielago() {
   if (estado === 'jugando') vampiro.activarMurcielago();
-  else if (estado === 'ruleta') jugarNoche();
+  else if (estado === 'ruleta') return;  // la ruleta solo avanza con su botón
   else if (estado === 'pausa') reanudar();
   else continuar();
 }
@@ -2101,7 +2117,9 @@ const costoGiro = () => (giroGratis ? 0 : 10 + 5 * noche);   // volver a girar c
 function iniciarRuleta(regirar = false) {
   // Al volver a girar, no se repite el mismo poder
   const opciones = PODERES.map((p) => p.id).filter((id) => !regirar || id !== poderNoche);
-  const resultado = elegir(opciones);
+  // Si salió al inicio después de girar, al volver le toca el mismo poder
+  const guardado = !regirar && progreso.partida && progreso.partida.noche === noche && progreso.partida.poder;
+  const resultado = guardado && PODERES.some((p) => p.id === guardado) ? guardado : elegir(opciones);
   const i = PODERES.findIndex((p) => p.id === resultado);
   const desde = modulo(ruleta.hasta, Math.PI * 2);
   // Ángulo final: el centro del segmento elegido queda bajo la flecha (arriba), tras varias vueltas
@@ -2138,6 +2156,21 @@ function jugarNoche() {
   joystick.activo = false;
 }
 function pausar() { if (estado === 'jugando') { estado = 'pausa'; joystick.activo = false; } }
+// "← Inicio": desde la ruleta o la pausa vuelve a la pantalla principal (tienda, ranking…).
+// La partida queda guardada al inicio de esta noche (desde la noche 2), y el poder que ya
+// salió en la ruleta se conserva para que salir y volver no sea un giro gratis.
+function volverAlInicio() {
+  if (estado !== 'ruleta' && estado !== 'pausa') return;
+  if (estado === 'ruleta' && ruleta.lista && progreso.partida && progreso.partida.noche === noche) {
+    progreso.partida.poder = poderNoche;
+    guardarProgreso();
+  }
+  joystick.activo = false;
+  estado = 'inicio';
+  momentoPausa = performance.now();      // evita que el mismo toque empiece otra vez
+  if (hayPartidaGuardada()) personajeActual = progreso.partida.personaje || 'vampiro';
+}
+document.getElementById('btn-inicio').addEventListener('click', () => volverAlInicio());
 function reanudar() { if (estado === 'pausa') estado = 'jugando'; }
 let monedasPartida = 0, monedasNoche = 0;  // monedas ganadas en esta partida / esta noche
 
@@ -2230,7 +2263,9 @@ function continuar() {                   // toque en una pantalla de pausa
 const hayPartidaGuardada = () => !!(progreso.partida && progreso.partida.noche > 1);
 function guardarPartida() {
   if (noche <= 1) return;                // la noche 1 no hace falta guardarla (y así no se borra al cargar)
-  progreso.partida = { noche, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo, personaje: personajeActual, puntosRun };
+  // Conserva el poder que ya salió en la ruleta de esta misma noche (si salió al inicio y volvió)
+  const poder = progreso.partida && progreso.partida.noche === noche ? progreso.partida.poder : undefined;
+  progreso.partida = { noche, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo, personaje: personajeActual, puntosRun, poder };
   guardarProgreso();
 }
 function borrarPartida() { progreso.partida = null; guardarProgreso(); }
@@ -2942,6 +2977,7 @@ function dibujar(t) {
     velo();
     texto('Pausa', ANCHO / 2, ALTO / 2 - 30, 80, '#e8e4c9', 'display');
     texto('Toca para seguir', ANCHO / 2, ALTO / 2 + 40, 20, '#a9a3c2');
+    texto('o "← Inicio" para ir a la tienda o al ranking', ANCHO / 2, ALTO / 2 + 70, 14, '#a9a3c2');
   } else if (estado === 'amanecer' && tAmanecer > DURACION_ESCENA && victoria) {
     // Pantalla de victoria final
     ctx.globalAlpha = Math.min(1, (tAmanecer - DURACION_ESCENA) / 0.4);
@@ -2999,9 +3035,11 @@ function actualizarBotones() {
   document.getElementById('aviso-nuevo').hidden = !(estado === 'inicio' && Ranking.estado === 'no-disponible' && tiendaEl.hidden && rankingEl.hidden);
   // Botón de pausa: solo jugando
   document.getElementById('btn-pausa').hidden = estado !== 'jugando';
+  document.getElementById('btn-inicio').hidden = !(estado === 'pausa' || (estado === 'ruleta' && ruleta.lista));
   // Pantalla completa: solo si el navegador la permite y aún no está activa
   const fsPermitida = document.fullscreenEnabled || document.webkitFullscreenEnabled;
-  btnPantalla.hidden = !fsPermitida || !!(document.fullscreenElement || document.webkitFullscreenElement) || !tiendaEl.hidden;
+  btnPantalla.hidden = !fsPermitida || !!(document.fullscreenElement || document.webkitFullscreenElement) || !tiendaEl.hidden
+    || estado === 'ruleta';               // en la ruleta taparía "Girar otra vez"
   // "Empezar de nuevo": en el inicio, si hay una partida guardada
   document.getElementById('btn-nueva').hidden = !(estado === 'inicio' && hayPartidaGuardada() && tiendaEl.hidden);
   // Resultados de la noche: "Siguiente noche" (o "Volver al inicio" tras ganar la noche 10)
