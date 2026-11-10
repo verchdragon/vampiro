@@ -588,7 +588,7 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
-const VERSION = '24 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
+const VERSION = '25 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
 const ANCHO = 540;                       // ancho lógico del mundo
 let ALTO = 960;                          // alto lógico: se ajusta a la forma de la pantalla (900 a 1200)
 const SANGRE_MAX = 100;
@@ -1194,6 +1194,9 @@ function salpicar(x, y, color, cantidad = 14, vel = 160) {
 function textoFlotante(x, y, t, color) { textos.push({ x, y, t, color, vida: 1 }); }
 
 function actualizarEfectos(dt) {
+  temblorPantalla = Math.max(0, temblorPantalla - dt * 35);
+  for (const c of caidos) c.t += dt;
+  caidos = caidos.filter((c) => c.t < DURACION_CAIDA);
   for (const p of particulas) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.92; p.vy *= 0.92; p.vida -= dt; }
   particulas = particulas.filter((p) => p.vida > 0);
   for (const t of textos) { t.y -= 30 * dt; t.vida -= dt; }
@@ -1221,6 +1224,38 @@ function dibujarEfectos() {
     texto(t.t, t.x, t.y, 18, t.color, 'cuerpo');
   }
   ctx.globalAlpha = 1;
+}
+
+// ---- Animación de personajes ----------------------------------------------
+// Piernas que se mueven al caminar (se dibujan antes del cuerpo para que asomen por debajo).
+// "y" es la altura de los pies; "paso" avanza al caminar.
+function piernas(x, y, paso, color, abiertas = 5, largo = 7) {
+  const s = Math.sin(paso);
+  ctx.fillStyle = color;
+  ctx.beginPath(); ctx.roundRect(x - abiertas - 2 + s * 2.5, y - largo - Math.max(0, s) * 2, 4, largo, 2); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(x + abiertas - 2 - s * 2.5, y - largo - Math.max(0, -s) * 2, 4, largo, 2); ctx.fill();
+}
+// ¿Está parpadeando? (un parpadeo corto cada ~3.5 s; "semilla" desfasa a cada personaje)
+const parpadea = (t, semilla = 0) => t > 0 && ((t * 1000 + semilla) % 3500) < 120;
+// Temblor de pantalla al recibir un golpe (se va apagando solo)
+let temblorPantalla = 0;
+// Personajes que caen al ser mordidos o eliminados (se inclinan y se desvanecen)
+let caidos = [];
+const DURACION_CAIDA = 0.7;
+function hacerCaer(e) {
+  e.asustado = false; e.tInvC = 0; e.tHipno = 0; e.tEnredo = 0; e.apuntando = 0;   // sin avisos encima mientras cae
+  caidos.push({ e, t: 0, lado: Math.random() < 0.5 ? -1 : 1 });
+}
+function dibujarCaidos(t) {
+  for (const c of caidos) {
+    const k = Math.min(1, c.t / DURACION_CAIDA);
+    const { x, y } = c.e.pos;
+    ctx.save();
+    ctx.globalAlpha = 1 - k;
+    ctx.translate(x, y + 18); ctx.rotate(c.lado * suave(k) * 1.45); ctx.translate(-x, -(y + 18));
+    c.e.dibujar(t);
+    ctx.restore();
+  }
 }
 
 // ---- Escenario: cementerio generado una vez por partida --------------------
@@ -1775,6 +1810,15 @@ class Vampiro {
       this.pos.y += m.y * m.fuerza * velocidadVampiro() * dt;
       this.paso += m.fuerza * dt * 10;
     }
+    // Estado para las animaciones: si camina, mordida reciente, destello al recibir golpe, rastro
+    this.moviendo = m.fuerza > 0.05;
+    this.tMordida = Math.max(0, (this.tMordida || 0) - dt);
+    this.tFlash = Math.max(0, (this.tFlash || 0) - dt);
+    this.tRastro = (this.tRastro || 0) - dt;
+    if (this.moviendo && this.tRastro <= 0 && !this.esMurcielago) {
+      if (es('lobo')) { salpicar(this.pos.x - this.dir.x * 10, this.pos.y + 18, '#6a6a72', 2, 40); this.tRastro = 0.12; }   // polvo al correr
+      else if (es('bruja')) { salpicar(this.pos.x, this.pos.y + 6, '#7fd69d', 1, 30); this.tRastro = 0.15; }              // chispitas
+    }
     limitar(this.pos, Vampiro.RADIO);
     this.sangre -= perdidaSangre() * dt;
     this.tInv = Math.max(0, this.tInv - dt);
@@ -1783,6 +1827,8 @@ class Vampiro {
     if (this.tInv > 0 || this.esMurcielago) return false;
     this.sangre -= dano * factorDano();  // la piel de piedra reduce el daño
     this.tInv = INVULNERABLE_SEG;
+    this.tFlash = 0.18;                  // destello blanco
+    temblorPantalla = 7;                 // la pantalla tiembla un poquito
     Sonido.golpe();
     salpicar(this.pos.x, this.pos.y, '#c8142a', 18);
     return true;
@@ -1809,9 +1855,25 @@ class Vampiro {
       circulo(x + 2, y - 1, 1.5, '#ff3b4e');
       return;
     }
+    // Animación: respira cuando está quieto y se estira al morder
+    ctx.save();
+    const resp = this.moviendo ? 0 : Math.sin(t * 3) * 0.025;
+    const mord = this.tMordida > 0 ? Math.sin((this.tMordida / 0.2) * Math.PI) * 0.16 : 0;
+    ctx.translate(x, y + 20); ctx.scale(1 + mord * 0.6, 1 + resp + mord); ctx.translate(-x, -(y + 20));
     // Otros personajes (momia, bruja, hombre lobo) tienen su propio dibujo
-    if (!es('vampiro')) { dibujarPersonaje(personajeActual, x, y, t, this.dir, this.paso); return; }
+    if (!es('vampiro')) dibujarPersonaje(personajeActual, x, y, t, this.dir, this.paso);
+    else this.dibujarVampiro(x, y, t);
+    if (this.tFlash > 0) {               // destello blanco al recibir un golpe
+      ctx.globalAlpha = Math.min(1, this.tFlash / 0.18) * 0.6;
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(x, y + 2, 15, 20, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+  // El vampiro de pie: piernas, capa, cuerpo, cabeza, ojos que miran hacia donde camina y parpadean
+  dibujarVampiro(x, y, t) {
     sombra(x, y + 20, 18, 6);
+    piernas(x, y + 21, this.paso, '#3a2f48', 5, 9);
     // Capa: triángulo detrás, opuesto a la dirección, con ondeo al caminar
     const atras = { x: -this.dir.x, y: -this.dir.y };
     const lado = { x: -atras.y, y: atras.x };
@@ -1837,8 +1899,14 @@ class Vampiro {
     ctx.quadraticCurveTo(x + 10, y - 19, x + 11, y - 8);
     ctx.lineTo(x + 6, y - 12); ctx.lineTo(x, y - 7); ctx.lineTo(x - 6, y - 12);
     ctx.fill();
-    circulo(x - 4, y - 6, 2.2, '#e0102c');
-    circulo(x + 4, y - 6, 2.2, '#e0102c');
+    if (parpadea(t, 900)) {               // ojos cerrados un instante
+      ctx.strokeStyle = '#e0102c'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x - 2, y - 6); ctx.moveTo(x + 2, y - 6); ctx.lineTo(x + 6, y - 6); ctx.stroke();
+    } else {                              // miran hacia donde camina
+      const mx = (this.dir.x || 0) * 1.3, my = (this.dir.y || 0) * 1;
+      circulo(x - 4 + mx, y - 6 + my, 2.2, '#e0102c');
+      circulo(x + 4 + mx, y - 6 + my, 2.2, '#e0102c');
+    }
     ctx.fillStyle = '#ffffff';
     tri(x - 3, y, x - 2, y + 3.5, x - 1, y);
     tri(x + 1, y, x + 2, y + 3.5, x + 3, y);
@@ -1850,6 +1918,7 @@ function dibujarPersonaje(id, x, y, t, dir, paso) {
   const atras = { x: -dir.x, y: -dir.y };
   if (id === 'momia') {
     sombra(x, y + 20, 16, 5);
+    piernas(x, y + 21, paso, '#cdbf98', 5, 9);
     ctx.strokeStyle = '#cdbf98'; ctx.lineWidth = 3; ctx.lineCap = 'round';      // venda suelta que ondea
     ctx.beginPath(); ctx.moveTo(x + atras.x * 8, y + 6 + atras.y * 8);
     ctx.quadraticCurveTo(x + atras.x * 20 + Math.sin(paso) * 4, y + 10 + atras.y * 20, x + atras.x * 30, y + 14 + atras.y * 30 + Math.cos(paso) * 4); ctx.stroke();
@@ -1864,6 +1933,7 @@ function dibujarPersonaje(id, x, y, t, dir, paso) {
     circulo(x - 4, y - 7.5, 1.8, '#b6ff6a'); circulo(x + 4, y - 7.5, 1.8, '#b6ff6a');
   } else if (id === 'bruja') {
     sombra(x, y + 20, 16, 5);
+    piernas(x, y + 23, paso, '#1e0c2a', 5, 6);
     const m = Math.sin(paso) * 3;                                                // el vestido se mece
     ctx.fillStyle = '#3a1450';
     ctx.beginPath(); ctx.moveTo(x - 6, y - 2); ctx.lineTo(x + 6, y - 2); ctx.lineTo(x + 15 + m, y + 20); ctx.lineTo(x - 15 + m, y + 20); ctx.closePath(); ctx.fill();
@@ -1878,6 +1948,7 @@ function dibujarPersonaje(id, x, y, t, dir, paso) {
     ctx.fillStyle = '#7fd69d'; ctx.fillRect(x - 8, y - 20, 16, 3);              // cinta del sombrero
   } else if (id === 'lobo') {
     sombra(x, y + 20, 18, 6);
+    piernas(x, y + 22, paso, '#4e443c', 6, 9);
     ctx.fillStyle = '#5e5248';                                                    // cola peluda
     ctx.beginPath(); ctx.ellipse(x + atras.x * 18, y + 8 + atras.y * 12 + Math.sin(paso) * 2, 12, 5, Math.atan2(atras.y, atras.x), 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#6e6157'; ctx.beginPath(); ctx.ellipse(x, y + 8, 14, 12, 0, 0, Math.PI * 2); ctx.fill();   // cuerpo
@@ -1970,6 +2041,7 @@ class Aldeano {
     ctx.save();
     if (this.escala !== 1) { ctx.translate(x, this.pos.y); ctx.scale(this.escala, this.escala); ctx.translate(-x, -this.pos.y); }
     sombra(x, this.pos.y + 17, 11, 4);
+    piernas(x, y + 19, this.paso, '#4a3e36', 4.5, 7);
     if (this.tipo === 'anciano') {       // bastón
       ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 2.5;
       ctx.beginPath(); ctx.moveTo(x + 11, y); ctx.lineTo(x + 13, y + 18); ctx.stroke();
@@ -2017,6 +2089,7 @@ class Cazador {
   get lanzaEstacas() { return this.tira; }
   actualizar(dt) {
     this.tInvC = Math.max(0, this.tInvC - dt);
+    this.tLanzo = Math.max(0, (this.tLanzo || 0) - dt);
     this.tHipno = Math.max(0, this.tHipno - dt);
     if (this.tHipno > 0) return;         // hipnotizado: se queda quieto
     this.tEnredo = Math.max(0, (this.tEnredo || 0) - dt);
@@ -2035,6 +2108,7 @@ class Cazador {
           // El sacerdote lanza un frasco de agua bendita adonde estás (deja un charco que quema)
           if (this.tipo === 'sacerdote') {
             frascos.push({ x0: this.pos.x, y0: this.pos.y - 10, x1: objetivo.x, y1: objetivo.y, t: 0, dur: 0.8 });
+            this.tLanzo = 0.2;
             Sonido.lanzarEstaca();
             this.tTiro = azar(tiro.espera[0], tiro.espera[1]);
             return;
@@ -2048,6 +2122,7 @@ class Cazador {
           }
           Sonido.lanzarEstaca();
           this.tTiro = azar(tiro.espera[0], tiro.espera[1]);
+          this.tLanzo = 0.2;               // brazo hacia delante
         }
         return;                          // no camina mientras apunta
       }
@@ -2059,8 +2134,9 @@ class Cazador {
     this.paso += dt * 10;
   }
   dibujar() {
-    const { x } = this.pos;
-    const y = this.pos.y + Math.abs(Math.sin(this.paso)) * -2;
+    const inclina = this.apuntando > 0 ? -3 : (this.tLanzo || 0) > 0 ? 4 : 0;   // apunta: atrás · lanza: adelante
+    const x = this.pos.x + this.mira.x * inclina;
+    const y = this.pos.y + Math.abs(Math.sin(this.paso)) * -2 + this.mira.y * inclina;
     // Colores según el tipo: abrigo y cinta del sombrero
     const abrigo = { normal: '#3d2a1c', ballestero: '#2c3a26', jefe: '#3a1238', sacerdote: '#17171f' }[this.tipo];
     const cinta = { normal: '#7a1414', ballestero: '#4f8a3c', jefe: '#d4a63a', sacerdote: '#e8e8f0' }[this.tipo];
@@ -2070,6 +2146,7 @@ class Cazador {
     }
     if (this.tInvC > 0 && Math.floor(this.tInvC * 20) % 2 === 0) ctx.globalAlpha = 0.5;   // parpadeo al ser golpeado
     sombra(x, this.pos.y + 19, 14, 5);
+    piernas(x, y + 24, this.paso, '#33261a', 6, 8);
     // Ballestero: ballesta atravesada en la punta
     if (this.tipo === 'ballestero') {
       const px = x + this.mira.x * 22, py = y + 6 + this.mira.y * 22;
@@ -2186,6 +2263,7 @@ class Siervo {
     g.addColorStop(0, 'rgba(200,20,60,.35)'); g.addColorStop(1, 'rgba(200,20,60,0)');
     ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI * 2); ctx.fill();
     sombra(x, this.pos.y + 17, 11, 4);
+    piernas(x, y + 19, this.paso, '#2a0a14', 4.5, 7);
     ctx.fillStyle = '#4a0f22';                                   // ropa oscura
     ctx.beginPath(); ctx.ellipse(x, y + 7, 10, 10, 0, 0, Math.PI * 2); ctx.fill();
     circulo(x, y - 6, 8, '#c9c4d6');                              // piel pálida
@@ -2513,7 +2591,7 @@ function empezarNoche() {
   vampiro.sangre = SANGRE_MAX;
   aldeanos = Array.from({ length: numAldeanos(noche) }, () => new Aldeano());
   cazadores = [];
-  particulas = []; textos = []; ondas = [];
+  particulas = []; textos = []; ondas = []; caidos = []; temblorPantalla = 0;
   estacas = []; enjambre = []; tEnjambreActivo = 0;
   frascos = []; charcos = [];
   siervos = []; esperaSiervo = 0; jefeSalio = false;
@@ -2714,6 +2792,7 @@ function animarInvasion(dt) {
     const d = resta(v.objetivo.pos, v), l = largo(d);
     if (l < 14) {                          // ¡mordida!
       v.objetivo.comido = true;
+      hacerCaer(v.objetivo);
       v.comiendo = 0.35;
       salpicar(v.objetivo.pos.x, v.objetivo.pos.y, '#c8142a', 18);
       if (tAmanecer - ultimoMordisco > 0.12) { ultimoMordisco = tAmanecer; Sonido.mordida(); }
@@ -3017,6 +3096,7 @@ function mostrarCartel(titulo, sub, color, conMoneda = false) {
 
 function eliminarCazador(c) {
   eliminados++;
+  hacerCaer(c);                          // cae y se desvanece
   if (c.tipo === 'jefe') {               // ¡venciste al jefe!
     ganarMonedas(50, c.pos.x, c.pos.y);
     mostrarCartel('¡Venciste al Inquisidor!', '+50 monedas', '#d9a6ff');
@@ -3100,6 +3180,8 @@ function actualizar(dt) {
       }
       const sangreGanada = Math.max(5, sangrePorMordida() + a.bonus);
       vampiro.sangre = Math.min(SANGRE_MAX, vampiro.sangre + sangreGanada);
+      vampiro.tMordida = 0.2;            // el vampiro se estira al morder
+      hacerCaer(a);                      // el aldeano se desmaya
       mordidas++;
       avanzarMision('mordidas', 1);
       if (a.tipo === 'guardia') avanzarMision('guardias', 1);
@@ -3348,6 +3430,10 @@ function dibujar(t) {
   }
   // Ordenar por altura para que lo de abajo tape lo de arriba
   // Al amanecer el vampiro lo dibuja la escena del ataúd
+  // Temblor de pantalla al recibir un golpe (solo mueve a los personajes y efectos, no el marcador)
+  const sacude = temblorPantalla > 0 && estado === 'jugando';
+  if (sacude) { ctx.save(); ctx.translate(azar(-1, 1) * temblorPantalla, azar(-1, 1) * temblorPantalla); }
+  dibujarCaidos(t);
   const todos = [...aldeanos, ...siervos, ...cazadores, ...(estado === 'amanecer' ? [] : [vampiro])].sort((a, b) => a.pos.y - b.pos.y);
   todos.forEach((e) => e.dibujar(t));
   if (tHielo > 0 && estado !== 'amanecer') dibujarHielo();
@@ -3356,6 +3442,7 @@ function dibujar(t) {
   dibujarEstacas();
   dibujarEnjambre(t);
   dibujarEfectos();
+  if (sacude) ctx.restore();
   luzAmanecer();
   if (estado === 'ruleta') { dibujarRuleta(); return; }
   dibujarHud();
