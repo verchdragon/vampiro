@@ -296,6 +296,15 @@
     background: var(--sangre); color: #fff; font: 600 18px/1 var(--cuerpo);
   }
   #btn-siguiente:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
+  /* "Volver al inicio" en la pantalla de victoria (arriba de "Empezar vuelta…") */
+  #btn-salir {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(150px + env(safe-area-inset-bottom, 0px));
+    padding: 10px 20px; border-radius: 999px;
+    border: 1.5px solid rgba(239,233,225,.45); background: rgba(20,16,30,.85);
+    color: var(--hueso); font: 600 14px/1 var(--cuerpo);
+  }
+  #btn-salir:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
   /* "Empezar de nuevo" (cuando hay una partida guardada), arriba del botón de la tienda */
   #btn-nueva {
     position: fixed;
@@ -448,6 +457,7 @@
 </button>
 <button id="btn-nueva" type="button" hidden>Empezar de nuevo</button>
 <button id="btn-siguiente" type="button" hidden>Siguiente noche</button>
+<button id="btn-salir" type="button" hidden>Volver al inicio</button>
 
 <button id="btn-sonido" type="button" aria-label="Silenciar sonido">
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -474,6 +484,7 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
+const VERSION = '21 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
 const ANCHO = 540;                       // ancho lógico del mundo
 let ALTO = 960;                          // alto lógico: se ajusta a la forma de la pantalla (900 a 1200)
 const SANGRE_MAX = 100;
@@ -505,10 +516,13 @@ const TIROS = {
 
 // Dificultad según el número de noche (1-3 fácil, 4-6 medio, 7-9 difícil, 10 final)
 const numAldeanos = (n) => Math.min(10, 5 + Math.ceil(n / 2));           // 6 → 10
-const maxCazadores = (n) => Math.min(12, n + 2);                         // 3 → 12
-const velCazador = (n, t) => Math.min(185, 65 + n * 9 + t * 0.6);
-const intervaloSpawn = (n) => Math.max(1.2, 4.6 - n * 0.35);
-const probEstacas = (n) => (n < 3 ? 0 : n === 3 ? 0.35 : n === 4 ? 0.6 : 1);   // cuántos lanzan estacas
+// En cada vuelta (segunda, tercera…) los cazadores son más, más rápidos y pegan más fuerte
+const fVuelta = () => 1 + 0.15 * (vuelta - 1);                           // velocidad y frecuencia
+const factorAtaque = () => 1 + 0.25 * (vuelta - 1);                      // daño de golpes y estacas
+const maxCazadores = (n) => Math.min(12 + 4 * (vuelta - 1), n + 2 + 2 * (vuelta - 1));   // 3 → 12 (más en otras vueltas)
+const velCazador = (n, t) => Math.min(185 + 20 * (vuelta - 1), (65 + n * 9 + t * 0.6) * fVuelta());
+const intervaloSpawn = (n) => Math.max(0.9, (4.6 - n * 0.35) / fVuelta());
+const probEstacas = (n) => (vuelta > 1 ? (n < 3 ? 0.5 : 1) : n < 3 ? 0 : n === 3 ? 0.35 : n === 4 ? 0.6 : 1);   // cuántos lanzan estacas
 const probBallestero = (n) => (n < 4 ? 0 : Math.min(0.4, 0.15 + (n - 4) * 0.05));
 const nombreDificultad = (n) => (n <= 3 ? ['Fácil', '#7fd69d'] : n <= 6 ? ['Medio', '#ffcf6b'] : n <= 9 ? ['Difícil', '#ff6b7d'] : ['Noche final', '#d9a6ff']);
 // Aviso de lo nuevo en cada noche
@@ -560,11 +574,14 @@ const nivel = (id) => progreso.niveles[id] || 0;        // nivel de una mejora
 
 // Valores que dependen de las mejoras compradas
 // (cada personaje modifica un poco estos valores; ver PERSONAJES más abajo)
-const velocidadVampiro = () => 230 * (1 + 0.10 * nivel('velocidad')) * (es('lobo') ? 1.15 : es('momia') ? 0.9 : 1);
+const velocidadVampiro = () => 230 * (1 + 0.10 * Math.min(10, nivel('velocidad'))) * (es('lobo') ? 1.15 : es('momia') ? 0.9 : 1);
 const sangrePorMordida = () => SANGRE_POR_MORDIDA + 6 * nivel('colmillos') + (es('lobo') ? 8 : 0);
-const factorDano = () => (1 - 0.15 * nivel('piel')) * (es('momia') ? 0.7 : es('bruja') ? 1.15 : 1);
-const perdidaSangre = () => PERDIDA_SANGRE_SEG * (1 - 0.12 * nivel('aguante')) * (es('momia') ? 0.8 : es('lobo') ? 1.25 : 1);
-const maxSiervos = () => 2 + nivel('siervos');
+const factorDano = () => Math.max(0.3, 1 - 0.15 * nivel('piel')) * (es('momia') ? 0.7 : es('bruja') ? 1.15 : 1);
+const perdidaSangre = () => PERDIDA_SANGRE_SEG * Math.max(0.35, 1 - 0.12 * nivel('aguante')) * (es('momia') ? 0.8 : es('lobo') ? 1.25 : 1);
+const maxSiervos = () => Math.min(6, 2 + nivel('siervos'));
+// Cada vuelta alcanzada sube 2 niveles el máximo de cada mejora; los niveles extra cuestan 50% más cada uno
+const maxNivel = (m) => m.precios.length + 2 * ((progreso.vueltaMax || 1) - 1);
+const precioMejora = (m, n) => (n < m.precios.length ? m.precios[n] : Math.round(m.precios[m.precios.length - 1] * Math.pow(1.5, n - m.precios.length + 1)));
 
 // ---- Personajes jugables -------------------------------------------------
 // Se compran con monedas o se ganan al terminar las 10 noches (en este orden).
@@ -946,7 +963,7 @@ function aMundo(p) {
 }
 
 document.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('#poderes, #btn-sonido, #btn-tienda, #tienda, #ruleta-botones, #btn-pausa, #btn-pantalla, #btn-nueva, #btn-siguiente, #btn-ranking, #ranking, #btn-inicio')) return;   // los botones tienen su propio manejo
+  if (e.target.closest('#poderes, #btn-sonido, #btn-tienda, #tienda, #ruleta-botones, #btn-pausa, #btn-pantalla, #btn-nueva, #btn-siguiente, #btn-ranking, #ranking, #btn-inicio, #btn-salir')) return;   // los botones tienen su propio manejo
   if (estado === 'pausa') { reanudar(); return; }    // tocar para seguir
   if (estado === 'ruleta') return;      // en la ruleta solo se entra con el botón "¡A jugar!"
   if (estado !== 'jugando') { continuar(); return; } // tocar para empezar / seguir
@@ -1799,7 +1816,7 @@ class Cazador {
     this.pos = puntoEnBorde(); this.vel = tipo === 'jefe' ? vel * 0.6 : vel;
     this.paso = azar(0, 6); this.mira = { x: 1, y: 0 };
     this.tipo = tipo;
-    this.vidas = tipo === 'jefe' ? 8 : 1; this.vidasMax = this.vidas;
+    this.vidas = tipo === 'jefe' ? 8 + 4 * (vuelta - 1) : 1; this.vidasMax = this.vidas;   // el jefe aguanta más en cada vuelta
     this.tInvC = 0;                      // invulnerable un momento tras recibir un golpe
     this.tHipno = 0;                     // tiempo restante hipnotizado
     this.tTiro = azar(1.5, 3);           // espera para el siguiente lanzamiento
@@ -2046,9 +2063,9 @@ function actualizarEstacas(dt) {
     // ¿Le pega al vampiro?
     if (largo(resta(e, vampiro.pos)) < Vampiro.RADIO + 5) {
       if (vampiro.esMurcielago) return true;          // en murciélago la esquivas
-      if (vampiro.recibirGolpe(ESTACA_DANO)) {
+      if (vampiro.recibirGolpe(ESTACA_DANO * factorAtaque())) {
         Sonido.impactoEstaca();
-        textoFlotante(vampiro.pos.x, vampiro.pos.y - 28, `-${ESTACA_DANO}`, '#ff6b7d');
+        textoFlotante(vampiro.pos.x, vampiro.pos.y - 28, `-${Math.round(ESTACA_DANO * factorAtaque() * factorDano())}`, '#ff6b7d');
       }
       return false;
     }
@@ -2124,9 +2141,10 @@ function texto(t, x, y, tam, color, fuente = 'cuerpo', alin = 'center') {
 let estado = 'inicio';
 let momentoPausa = -Infinity;            // cuándo apareció la última pantalla de pausa (al cargar: nunca)
 // Evita saltar la pantalla por accidente con un toque justo al cambiar
-const puedeContinuar = () => performance.now() - momentoPausa > 800 && (estado !== 'amanecer' || tAmanecer > DURACION_ESCENA + 0.3);
+const puedeContinuar = () => performance.now() - momentoPausa > 800 && (estado !== 'amanecer' || tAmanecer > duracionEscena() + 0.3);
 // 'ruleta' (elige el poder de la noche) y 'pausa' también son estados
 let vampiro, aldeanos, cazadores, tiempoNoche, noche, mordidas, eliminados, cargaNiebla, tSpawn, tiempoTotal;
+let vuelta = 1;                            // 1 = primera vuelta; al ganar se puede seguir a la 2, 3…
 let jefeSalio = false;                     // en la noche final, el jefe aparece una vez
 let victoria = false;                      // sobrevivió la noche final
 
@@ -2205,6 +2223,8 @@ let ataud = { x: 0, y: 0 };                // dónde aparece el ataúd
 let vampInicio = { x: 0, y: 0 };           // dónde estaba el vampiro al amanecer
 let sonoCierre = false, sonoFinal = false; // para que cada sonido suene una vez
 const DURACION_ESCENA = 3.3;               // después aparece el cartel de resultados
+const DURACION_INVASION = 4.8;             // escena final de victoria (los vampiros se comen a todos)
+const duracionEscena = () => (victoria ? DURACION_INVASION : DURACION_ESCENA);
 // Línea de tiempo de la escena (segundos desde que termina la noche):
 // 0.0-0.6 sale el ataúd · 0.35 el vampiro se vuelve murciélago · 0.45-0.85 se abre la tapa
 // 0.6-1.9 vuela hasta el ataúd · 1.9-2.2 entra · 2.2-2.6 se cierra la tapa · 2.6 golpe
@@ -2232,7 +2252,7 @@ let mordidasInicioNoche = 0, eliminadosInicioNoche = 0, bonoComboNoche = 0, jefe
 function puntosDeLaNoche() {
   const base = 100 + (mordidas - mordidasInicioNoche) * 10 + (eliminados - eliminadosInicioNoche) * 15
     + bonoComboNoche + Math.round(Math.max(0, vampiro.sangre)) + (jefeVencidoNoche ? 300 : 0);
-  return Math.min(MAX_PUNTOS_NOCHE, Math.round(base * (1 + 0.1 * noche)));
+  return Math.min(MAX_PUNTOS_NOCHE, Math.round(base * (1 + 0.1 * noche) * (1 + 0.5 * (vuelta - 1))));   // más puntos en vueltas difíciles
 }
 function guardarRecord() { try { localStorage.setItem('vampiro-record', String(mejor)); } catch (_) {} }
 
@@ -2242,7 +2262,7 @@ const puntaje = () => Math.floor(tiempoTotal) + mordidas * 10 + eliminados * 15 
 function nuevaPartida() {
   personajeActual = progreso.personaje;   // la partida nueva usa el personaje elegido
   noche = 1; mordidas = 0; eliminados = 0; cargaNiebla = 0; tiempoTotal = 0; monedasPartida = 0;
-  mejorCombo = 0; victoria = false; puntosRun = 0;
+  mejorCombo = 0; victoria = false; puntosRun = 0; vuelta = 1;
   vampiro = new Vampiro();
   empezarNoche();
 }
@@ -2273,31 +2293,38 @@ function empezarNoche() {
 function continuar() {                   // toque en una pantalla de pausa
   if (!puedeContinuar()) return;
   mantenerEncendida();
-  if (estado === 'amanecer' && victoria) { borrarPartida(); nuevaPartida(); estado = 'inicio'; reembolso = 0; }   // ganó: volver al inicio
+  if (estado === 'amanecer' && victoria) { reembolso = 0; seguirPartida(); }   // ganó: empieza la siguiente vuelta
   else if (estado === 'amanecer') { noche++; empezarNoche(); }
   else if (estado === 'inicio' && hayPartidaGuardada()) { reembolso = 0; seguirPartida(); }
   else { reembolso = 0; nuevaPartida(); }   // 'inicio' o 'fin'
 }
 
 // La partida se guarda al empezar cada noche: si el juego se cierra, sigues en esa noche
-const hayPartidaGuardada = () => !!(progreso.partida && progreso.partida.noche > 1);
+const hayPartidaGuardada = () => !!(progreso.partida && (progreso.partida.noche > 1 || (progreso.partida.vuelta || 1) > 1));
 function guardarPartida() {
-  if (noche <= 1) return;                // la noche 1 no hace falta guardarla (y así no se borra al cargar)
+  if (noche <= 1 && vuelta <= 1) return;   // la noche 1 de la primera vuelta no hace falta guardarla
   // Conserva el poder que ya salió en la ruleta de esta misma noche (si salió al inicio y volvió)
   const poder = progreso.partida && progreso.partida.noche === noche ? progreso.partida.poder : undefined;
-  progreso.partida = { noche, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo, personaje: personajeActual, puntosRun, poder };
+  progreso.partida = { noche, vuelta, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo, personaje: personajeActual, puntosRun, poder };
   guardarProgreso();
 }
 function borrarPartida() { progreso.partida = null; guardarProgreso(); }
 function seguirPartida() {
   ({ noche, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo } = progreso.partida);
   puntosRun = progreso.partida.puntosRun || 0;
+  vuelta = progreso.partida.vuelta || 1;
+  progreso.vueltaMax = Math.max(progreso.vueltaMax || 1, vuelta);
   personajeActual = progreso.partida.personaje || 'vampiro';   // sigue con el mismo personaje
   victoria = false; cargaNiebla = 0;
   vampiro = new Vampiro();
   empezarNoche();
 }
 document.getElementById('btn-siguiente').addEventListener('click', () => continuar());
+document.getElementById('btn-salir').addEventListener('click', () => {
+  // Tras ganar: al inicio; la siguiente vuelta queda guardada para cuando quieras
+  estado = 'inicio'; momentoPausa = performance.now();
+  if (hayPartidaGuardada()) personajeActual = progreso.partida.personaje || 'vampiro';
+});
 document.getElementById('btn-nueva').addEventListener('click', () => {
   borrarPartida(); reembolso = 0; mantenerEncendida(); nuevaPartida();
 });
@@ -2360,7 +2387,7 @@ function terminarNoche() {
   teclas.clear();
   victoria = noche === NOCHE_FINAL;      // ¡sobrevivió las 10 noches!
   empezarEscenaAtaud();
-  ganarMonedas(MONEDAS_NOCHE * noche);   // premio por sobrevivir la noche
+  ganarMonedas(Math.round(MONEDAS_NOCHE * noche * (1 + 0.5 * (vuelta - 1))));   // premio por sobrevivir la noche (más en otras vueltas)
   if (victoria) ganarMonedas(200);       // premio por ganar el juego
   // Resultados: puntos de esta noche, totales y récord
   // Puntos del ranking: los de esta noche se suman a la partida y se guardan los récords
@@ -2374,7 +2401,12 @@ function terminarNoche() {
   progreso.rank.pendiente = true;        // hay récords por subir (se suben al terminar esta función)
   // Guardado: si cierras el juego en los resultados, sigues en la noche siguiente
   // (y como la partida ya apunta a la siguiente noche, esta no se vuelve a cobrar)
-  if (victoria) borrarPartida();         // noche 10 ganada: no existe la noche 11
+  // Noche 10 ganada: no existe la noche 11; queda lista la siguiente vuelta (si cierras el juego, sigues ahí)
+  if (victoria) {
+    progreso.partida = { noche: 1, vuelta: vuelta + 1, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo, personaje: personajeActual, puntosRun: 0 };
+    progreso.vueltaMax = Math.max(progreso.vueltaMax || 1, vuelta + 1);   // sube el límite de las mejoras
+    guardarProgreso();
+  }
   // Ganar las 10 noches desbloquea el siguiente personaje que falte
   personajeGanado = null;
   if (victoria) {
@@ -2382,7 +2414,7 @@ function terminarNoche() {
     if (personajeGanado) { progreso.personajes[personajeGanado] = true; guardarProgreso(); Sonido.nuevoPoder(); }
   }
   else {
-    progreso.partida = { noche: noche + 1, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo, personaje: personajeActual, puntosRun };
+    progreso.partida = { noche: noche + 1, vuelta, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo, personaje: personajeActual, puntosRun };
     guardarProgreso();
   }
   guardarProgreso();
@@ -2402,7 +2434,73 @@ function empezarEscenaAtaud() {
   siervos = [];
   tHielo = 0;
   salpicar(ataud.x, ataud.y + 30, '#5a4636', 18, 120);   // tierra al salir el ataúd
+  if (victoria) { empezarInvasion(); return; }   // noche 10 ganada: escena de la invasión
   if (es('bruja')) Sonido.burbujas(); else Sonido.ataudAbre();
+}
+
+// ---- Escena final: llegan muchos vampiros y se comen a todos -----------------
+let invasores = [];
+let ultimoMordisco = 0;                    // para no saturar el sonido de mordidas
+function empezarInvasion() {
+  const presas = aldeanos.length + cazadores.length;
+  const n = Math.min(18, Math.max(8, presas));
+  invasores = Array.from({ length: n }, (_, i) => {
+    const p = puntoEnBorde();
+    return { x: p.x, y: p.y, retraso: 0.3 + i * 0.12, objetivo: null, comiendo: 0, paso: Math.random() * 6, dir: { x: 1, y: 0 } };
+  });
+  ultimoMordisco = 0;
+  Sonido.jefe();
+  textoFlotante(vampiro.pos.x, vampiro.pos.y - 40, '¡A comer, hijos de la noche!', '#ff6b7d');
+}
+function animarInvasion(dt) {
+  const vivos = () => [...aldeanos, ...cazadores].filter((e) => !e.comido);
+  for (const v of invasores) {
+    if (tAmanecer < v.retraso) continue;
+    v.paso += dt * 12;
+    if (v.comiendo > 0) { v.comiendo -= dt; continue; }
+    // Busca la presa libre más cercana (que no persiga otro vampiro)
+    if (!v.objetivo || v.objetivo.comido) {
+      const todas = vivos();
+      const libres = todas.filter((e) => !invasores.some((o) => o !== v && o.objetivo === e));
+      const lista = libres.length ? libres : todas;
+      v.objetivo = lista.sort((a, b) => largo(resta(a.pos, v)) - largo(resta(b.pos, v)))[0] || null;
+    }
+    if (!v.objetivo) { v.y -= 220 * dt; continue; }   // ya no queda nadie: se va volando
+    const d = resta(v.objetivo.pos, v), l = largo(d);
+    if (l < 14) {                          // ¡mordida!
+      v.objetivo.comido = true;
+      v.comiendo = 0.35;
+      salpicar(v.objetivo.pos.x, v.objetivo.pos.y, '#c8142a', 18);
+      if (tAmanecer - ultimoMordisco > 0.12) { ultimoMordisco = tAmanecer; Sonido.mordida(); }
+    } else {
+      v.dir = { x: d.x / l, y: d.y / l };
+      v.x += v.dir.x * 340 * dt; v.y += v.dir.y * 340 * dt;
+    }
+  }
+  aldeanos = aldeanos.filter((a) => !a.comido);
+  cazadores = cazadores.filter((c) => !c.comido);
+}
+// Un vampirito de la invasión (pequeño, con capa)
+function dibujarVampirito(v, t) {
+  ctx.save(); ctx.translate(v.x, v.y + Math.abs(Math.sin(v.paso)) * -2); ctx.scale(0.72, 0.72);
+  sombra(0, 20, 12, 4);
+  ctx.fillStyle = '#4a0010';                                                   // capa detrás
+  ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(-v.dir.x * 26 - 10, -v.dir.y * 20 + 16); ctx.lineTo(-v.dir.x * 26 + 10, -v.dir.y * 20 + 16); ctx.lineTo(12, 0); ctx.fill();
+  ctx.fillStyle = '#16121e'; ctx.beginPath(); ctx.ellipse(0, 8, 11, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#a3001c'; tri(-12, -2, -3, 4, -10, 9); tri(12, -2, 3, 4, 10, 9);
+  circulo(0, -6, 9, '#e9e4ef');
+  ctx.fillStyle = '#120d18'; ctx.beginPath(); ctx.arc(0, -7, 9, Math.PI, 0); ctx.fill();
+  circulo(-3.5, -6, 1.8, '#e0102c'); circulo(3.5, -6, 1.8, '#e0102c');
+  if (v.comiendo > 0) circulo(0, 0, 3, '#7a0010');                              // boca abierta mordiendo
+  ctx.restore();
+}
+function dibujarInvasion(t) {
+  // El protagonista en el centro de la escena, con un aura roja
+  const g = ctx.createRadialGradient(vampiro.pos.x, vampiro.pos.y, 6, vampiro.pos.x, vampiro.pos.y, 70);
+  g.addColorStop(0, 'rgba(255,40,60,.35)'); g.addColorStop(1, 'rgba(255,40,60,0)');
+  ctx.fillStyle = g; ctx.beginPath(); ctx.arc(vampiro.pos.x, vampiro.pos.y, 70, 0, Math.PI * 2); ctx.fill();
+  vampiro.dibujar(t);
+  for (const v of invasores) if (tAmanecer >= v.retraso) dibujarVampirito(v, t);
 }
 const suave = (k) => k * k * (3 - 2 * k);                  // aceleración suave (0..1)
 const tramo = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));   // progreso de t entre a y b
@@ -2419,6 +2517,11 @@ function posicionVuelo(conArco = true) {
 }
 function animarAmanecer(dt) {
   tAmanecer += dt;
+  if (victoria) {                        // escena final: invasión de vampiros
+    animarInvasion(dt);
+    if (tAmanecer > duracionEscena() && !sonoFinal) { sonoFinal = true; Sonido.victoria(); }
+    return;
+  }
   // Transformación en murciélago: nube de humo morado
   if (tAmanecer > ESC_TRANSFORMA && !sonoTransforma) {
     sonoTransforma = true;
@@ -2440,7 +2543,7 @@ function animarAmanecer(dt) {
     if (es('bruja')) { Sonido.burbujas(); salpicar(ataud.x, ataud.y - 10, '#7fd69d', 26, 160); }   // nube verde del caldero
     else { Sonido.ataudCierra(); salpicar(ataud.x, ataud.y + 20, es('lobo') ? '#6a6a72' : '#5a4636', 12, 90); }
   }
-  if (tAmanecer > DURACION_ESCENA && !sonoFinal) { sonoFinal = true; Sonido.amanecer(); if (victoria) Sonido.victoria(); }
+  if (tAmanecer > duracionEscena() && !sonoFinal) { sonoFinal = true; Sonido.amanecer(); if (victoria) Sonido.victoria(); }
 }
 
 // Tabla de resultados de la noche: puntos, monedas y récord
@@ -2777,7 +2880,7 @@ function actualizar(dt) {
       }
       return r !== 2;
     }
-    if (vampiro.recibirGolpe(c.tipo === 'jefe' ? 35 : DANO_CAZADOR)) {
+    if (vampiro.recibirGolpe((c.tipo === 'jefe' ? 35 : DANO_CAZADOR) * factorAtaque())) {
       const n = normal(d);               // empujón para no recibir golpes seguidos
       c.pos.x += n.x * 70; c.pos.y += n.y * 70;
       if (es('momia')) c.tEnredo = 1.2;  // la momia lo deja enredado en vendas
@@ -2791,7 +2894,7 @@ function actualizar(dt) {
     borrarPartida();                     // perdiste: la próxima empieza desde la noche 1
     momentoPausa = performance.now();
     Sonido.derrota();
-  } else if (tiempoNoche >= DURACION_NOCHE) {   // ¡sobrevivió hasta el amanecer!
+  } else if (tiempoNoche >= DURACION_NOCHE || (noche === NOCHE_FINAL && jefeVencidoNoche)) {   // ¡amanecer! (o venció al Inquisidor)
     terminarNoche();
   }
 }
@@ -2821,7 +2924,7 @@ function dibujarHud() {
 
   // Arriba a la derecha: noche actual y cuenta regresiva al amanecer (con sol que sube)
   const restante = Math.max(0, Math.ceil(DURACION_NOCHE - tiempoNoche));
-  texto(`Noche ${noche}/${NOCHE_FINAL}`, ANCHO - 20, 28, 30, '#e8e4c9', 'display', 'right');
+  texto(`${vuelta > 1 ? 'V' + vuelta + ' · ' : ''}Noche ${noche}/${NOCHE_FINAL}`, ANCHO - 20, 28, 30, '#e8e4c9', 'display', 'right');
   texto(`Amanecer en ${restante} s`, ANCHO - 20, 58, 14, restante <= 10 ? '#ffcf6b' : '#a9a3c2', 'cuerpo', 'right');
   barra(ANCHO - 150, 70, 130, 8, tiempoNoche / DURACION_NOCHE, '#ffb347');
 }
@@ -2863,8 +2966,8 @@ function dibujarRuleta() {
   ctx.save(); ctx.translate(0, (ALTO - 960) / 2 - 40);   // centrar en pantallas altas
   const [dif, colorDif] = nombreDificultad(noche);
   texto(`Noche ${noche}`, ANCHO / 2, 110, 64, '#e8e4c9', 'display');
-  texto(`${dif} · ${escenarioActual().nombre}`, ANCHO / 2, 160, 20, colorDif);
-  texto(AVISOS_NOCHE[noche] || 'Sobrevive hasta el amanecer', ANCHO / 2, 188, 14, '#a9a3c2');
+  texto(`${vuelta > 1 ? 'Vuelta ' + vuelta + ' · ' : ''}${dif} · ${escenarioActual().nombre}`, ANCHO / 2, 160, 20, colorDif);
+  texto(vuelta > 1 && noche === 1 ? `Vuelta ${vuelta}: los cazadores son más rápidos y pegan más fuerte` : AVISOS_NOCHE[noche] || 'Sobrevive hasta el amanecer', ANCHO / 2, 188, 14, '#a9a3c2');
   texto('Poder de esta noche', ANCHO / 2, 232, 16, '#efe9e1');
   const cx = ANCHO / 2, cy = 430, R = 160, ang = anguloRuleta();
   PODERES.forEach((p, i) => {
@@ -2927,8 +3030,13 @@ function velo(color = 'rgba(0,0,0,.68)') { ctx.fillStyle = color; ctx.fillRect(0
 
 // Luz de amanecer: el borde superior se tiñe de naranja en los últimos 10 s
 function luzAmanecer() {
+  if (estado === 'amanecer' && victoria) {   // escena final: el cielo se tiñe de rojo sangre
+    ctx.fillStyle = `rgba(140,0,20,${0.4 * Math.min(1, tAmanecer / 3)})`;
+    ctx.fillRect(0, 0, ANCHO, ALTO);
+    return;
+  }
   let f = Math.max(0, (tiempoNoche - (DURACION_NOCHE - 10)) / 10);
-  if (estado === 'amanecer') f = 1 + Math.min(1, tAmanecer / DURACION_ESCENA) * 0.8;   // el sol sigue subiendo
+  if (estado === 'amanecer') f = 1 + Math.min(1, tAmanecer / duracionEscena()) * 0.8;   // el sol sigue subiendo
   if (f <= 0) return;
   const g = ctx.createLinearGradient(0, 0, 0, ALTO);
   g.addColorStop(0, `rgba(255,150,60,${0.35 * f})`);
@@ -2969,12 +3077,13 @@ function dibujar(t) {
     texto('¡Combos! Cazadores seguidos: 3, 5, 7, 9… monedas', ANCHO / 2, 554, 14, '#ffb347');
     texto('Se guardan aunque pierdas. Gástalas en la Tienda.', ANCHO / 2, 576, 14, '#efe9e1');
     monedasCentradas(622, 24);
-    if (reembolso) texto(`Te devolvimos ${reembolso} monedas de poderes comprados`, ANCHO / 2, 656, 13, '#7fd69d');
+    if (mejor) texto(`Récord: ${mejor} puntos`, ANCHO / 2, 652, 15, '#a9a3c2');
     texto(`Personaje: ${nombrePersonaje(personajeActual)}  ·  cámbialo en la Tienda`, ANCHO / 2, 680, 15, '#e8e4c9');
     texto('Arrastra el dedo como palanca para moverte', ANCHO / 2, 704, 13, '#a9a3c2');
-    texto(hayPartidaGuardada() ? `Toca para seguir en la noche ${progreso.partida.noche}` : 'Toca para empezar', ANCHO / 2, 744, hayPartidaGuardada() ? 30 : 36, '#e8e4c9', 'display');
-    if (mejor) texto(`Récord: ${mejor}`, ANCHO / 2, 788, 15, '#a9a3c2');
+    texto(hayPartidaGuardada() ? `Toca para seguir en la noche ${progreso.partida.noche}${(progreso.partida.vuelta || 1) > 1 ? ' (vuelta ' + progreso.partida.vuelta + ')' : ''}` : 'Toca para empezar', ANCHO / 2, 744, hayPartidaGuardada() ? 30 : 36, '#e8e4c9', 'display');
+
     ctx.restore();
+    texto(`Versión ${VERSION}`, 16, 22, 11, '#6f6888', 'cuerpo', 'left');   // arriba a la izquierda
     return;
   }
   // Ordenar por altura para que lo de abajo tape lo de arriba
@@ -2982,7 +3091,7 @@ function dibujar(t) {
   const todos = [...aldeanos, ...siervos, ...cazadores, ...(estado === 'amanecer' ? [] : [vampiro])].sort((a, b) => a.pos.y - b.pos.y);
   todos.forEach((e) => e.dibujar(t));
   if (tHielo > 0 && estado !== 'amanecer') dibujarHielo();
-  if (estado === 'amanecer') dibujarAtaud(t);
+  if (estado === 'amanecer') (victoria ? dibujarInvasion : dibujarAtaud)(t);
   dibujarEstacas();
   dibujarEnjambre(t);
   dibujarEfectos();
@@ -2998,21 +3107,20 @@ function dibujar(t) {
     texto('Pausa', ANCHO / 2, ALTO / 2 - 30, 80, '#e8e4c9', 'display');
     texto('Toca para seguir', ANCHO / 2, ALTO / 2 + 40, 20, '#a9a3c2');
     texto('o "← Inicio" para ir a la tienda o al ranking', ANCHO / 2, ALTO / 2 + 70, 14, '#a9a3c2');
-  } else if (estado === 'amanecer' && tAmanecer > DURACION_ESCENA && victoria) {
+  } else if (estado === 'amanecer' && tAmanecer > duracionEscena() && victoria) {
     // Pantalla de victoria final
-    ctx.globalAlpha = Math.min(1, (tAmanecer - DURACION_ESCENA) / 0.4);
+    ctx.globalAlpha = Math.min(1, (tAmanecer - duracionEscena()) / 0.4);
     velo('rgba(40,15,0,.7)');
-    texto('¡Venciste!', ANCHO / 2, ALTO / 2 - 190, 90, '#f0be46', 'display');
-    texto(`Sobreviviste las ${NOCHE_FINAL} noches.`, ANCHO / 2, ALTO / 2 - 120, 22, '#efe9e1');
-    texto('Eres el señor de la noche.', ANCHO / 2, ALTO / 2 - 92, 17, '#efe9e1');
-    dibujarResultados(ALTO / 2 - 50, '(incluye +200 por ganar)');
+    texto('¡La noche es tuya!', ANCHO / 2, ALTO / 2 - 230, 66, '#f0be46', 'display');
+    texto(`Ganaste la vuelta ${vuelta}: tus vampiros se comieron a todos.`, ANCHO / 2, ALTO / 2 - 165, 18, '#efe9e1');
+    texto(`En la vuelta ${vuelta + 1} tus mejoras pueden subir más, y los cazadores también.`, ANCHO / 2, ALTO / 2 - 140, 14, '#c9c3dc');
+    dibujarResultados(ALTO / 2 - 95, '(incluye +200 por ganar)');
     if (personajeGanado) {
-      texto(`¡Desbloqueaste a: ${nombrePersonaje(personajeGanado)}!`, ANCHO / 2, ALTO / 2 + 172, 22, '#7fd69d', 'display');
-      texto('Elígelo en la Tienda', ANCHO / 2, ALTO / 2 + 198, 14, '#c9c3dc');
+      texto(`¡Desbloqueaste a: ${nombrePersonaje(personajeGanado)}! Elígelo en la Tienda`, ANCHO / 2, ALTO / 2 + 130, 17, '#7fd69d');
     }
     ctx.globalAlpha = 1;
-  } else if (estado === 'amanecer' && tAmanecer > DURACION_ESCENA) {
-    ctx.globalAlpha = Math.min(1, (tAmanecer - DURACION_ESCENA) / 0.4);   // el cartel aparece suave
+  } else if (estado === 'amanecer' && tAmanecer > duracionEscena()) {
+    ctx.globalAlpha = Math.min(1, (tAmanecer - duracionEscena()) / 0.4);   // el cartel aparece suave
     velo('rgba(40,15,0,.6)');
     texto('¡Amaneció!', ANCHO / 2, ALTO / 2 - 190, 84, '#ffb347', 'display');
     texto(`Noche ${noche} de ${NOCHE_FINAL} completada`, ANCHO / 2, ALTO / 2 - 120, 22, '#efe9e1');
@@ -3026,7 +3134,7 @@ function dibujar(t) {
     velo();
     texto('Te quedaste', ANCHO / 2, ALTO / 2 - 130, 64, '#c8142a', 'display');
     texto('sin sangre', ANCHO / 2, ALTO / 2 - 70, 64, '#c8142a', 'display');
-    texto(`Llegaste a la noche ${noche} de ${NOCHE_FINAL}`, ANCHO / 2, ALTO / 2, 20, '#efe9e1');
+    texto(`Llegaste a la noche ${noche} de ${NOCHE_FINAL}${vuelta > 1 ? ' (vuelta ' + vuelta + ')' : ''}`, ANCHO / 2, ALTO / 2, 20, '#efe9e1');
     texto(`Puntos: ${puntosRun}   ·   Récord: ${mejor}`, ANCHO / 2, ALTO / 2 + 30, 20, '#efe9e1');
     texto(`Ganaste ${monedasPartida} monedas (se guardan)`, ANCHO / 2, ALTO / 2 + 70, 18, '#f0be46');
     if (mejorCombo >= 2) texto(`Mejor combo: x${mejorCombo}`, ANCHO / 2, ALTO / 2 + 136, 15, '#ffb347');
@@ -3049,7 +3157,7 @@ function actualizarBotones() {
   cargaEl.style.height = f * 100 + '%';
   btnNiebla.classList.toggle('listo', f >= 1);
   // Botón de la tienda: solo en los menús y con la tienda cerrada (no en la ruleta ni en la escena del ataúd)
-  btnTienda.hidden = ['jugando', 'pausa', 'ruleta'].includes(estado) || !tiendaEl.hidden || !rankingEl.hidden || (estado === 'amanecer' && tAmanecer <= DURACION_ESCENA);
+  btnTienda.hidden = ['jugando', 'pausa', 'ruleta'].includes(estado) || !tiendaEl.hidden || !rankingEl.hidden || (estado === 'amanecer' && tAmanecer <= duracionEscena());
   document.getElementById('btn-ranking').hidden = btnTienda.hidden;   // en los mismos menús que la tienda
   // Aviso de la versión nueva: solo en el enlace de Claude, en la pantalla de inicio
   document.getElementById('aviso-nuevo').hidden = !(estado === 'inicio' && Ranking.estado === 'no-disponible' && tiendaEl.hidden && rankingEl.hidden);
@@ -3064,8 +3172,10 @@ function actualizarBotones() {
   document.getElementById('btn-nueva').hidden = !(estado === 'inicio' && hayPartidaGuardada() && tiendaEl.hidden);
   // Resultados de la noche: "Siguiente noche" (o "Volver al inicio" tras ganar la noche 10)
   const btnSig = document.getElementById('btn-siguiente');
-  btnSig.hidden = !(estado === 'amanecer' && tAmanecer > DURACION_ESCENA && tiendaEl.hidden);
-  btnSig.textContent = victoria ? 'Volver al inicio' : `Siguiente noche (${noche + 1})`;
+  btnSig.hidden = !(estado === 'amanecer' && tAmanecer > duracionEscena() && tiendaEl.hidden);
+  btnSig.textContent = victoria ? `Empezar vuelta ${vuelta + 1} →` : `Siguiente noche (${noche + 1})`;
+  // Tras ganar: también se puede volver al inicio (la vuelta siguiente queda guardada)
+  document.getElementById('btn-salir').hidden = btnSig.hidden || !victoria;
   if (!btnSig.hidden) btnPantalla.hidden = true;   // no encimar botones en los resultados
   // Ruleta: botones cuando ya se detuvo
   document.getElementById('ruleta-botones').hidden = !(estado === 'ruleta' && ruleta.lista);
@@ -3115,10 +3225,10 @@ function pintarTienda() {
   document.querySelectorAll('#lista-personajes canvas[data-retrato]').forEach((cv) => dibujarRetrato(cv, cv.dataset.retrato));
   // Mejoras: varios niveles con precio creciente
   document.getElementById('lista-mejoras').innerHTML = MEJORAS.map((m) => {
-    const n = nivel(m.id), max = m.precios.length;
+    const n = nivel(m.id), max = maxNivel(m);
     const boton = n >= max
       ? `<button type="button" class="hecho" disabled>Máximo</button>`
-      : `<button type="button" data-mejora="${m.id}" ${progreso.monedas < m.precios[n] ? 'disabled' : ''}>${botonPrecio(m.precios[n])}</button>`;
+      : `<button type="button" data-mejora="${m.id}" ${progreso.monedas < precioMejora(m, n) ? 'disabled' : ''}>${botonPrecio(precioMejora(m, n))}</button>`;
     return `<div class="articulo" style="--c:${m.color}"><b>${m.nombre}</b><p>${m.desc}</p>${nivelesHtml(n, max)}${boton}</div>`;
   }).join('');
 }
@@ -3135,7 +3245,7 @@ tiendaEl.addEventListener('click', (e) => {
     progreso.personaje = b.dataset.elegir;
   } else if (b.dataset.mejora) {
     const m = MEJORAS.find((x) => x.id === b.dataset.mejora);
-    const precio = m.precios[nivel(m.id)];
+    const precio = nivel(m.id) < maxNivel(m) ? precioMejora(m, nivel(m.id)) : undefined;
     if (precio !== undefined && progreso.monedas >= precio) { progreso.monedas -= precio; progreso.niveles[m.id] = nivel(m.id) + 1; Sonido.compra(); }
   } else if (b.id === 'cerrar-tienda') {
     tiendaEl.hidden = true;
@@ -3169,7 +3279,7 @@ function cargarCodigo(texto) {
   // Mejoras: el nivel mayor de cada una, sin pasar del máximo
   for (const m of MEJORAS) {
     const n = Math.floor(Number(d.n && d.n[m.id]) || 0);
-    progreso.niveles[m.id] = Math.max(nivel(m.id), Math.min(m.precios.length, n));
+    progreso.niveles[m.id] = Math.max(nivel(m.id), Math.min(maxNivel(m), n));
   }
   // Personajes: todos los que tenga cualquiera de los dos
   for (const pj of PERSONAJES) if (d.p && d.p[pj.id] === true) progreso.personajes[pj.id] = true;
