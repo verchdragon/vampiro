@@ -1,0 +1,73 @@
+rules_version = '2';
+
+// Reglas de seguridad del ranking de VAMPIRO.
+// Copia todo este archivo en Firebase → Firestore Database → Reglas → Publicar.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- Nombres reservados ----------------------------------------------
+    // El id del documento es el nombre en minúsculas ("dracula_mx") y guarda
+    // el id anónimo de su dueño. Así nadie puede usar el nombre de otro.
+    match /nombres/{nombre} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && nombre.matches('^[a-z0-9_-]{3,16}$')
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if request.auth != null && resource.data.uid == request.auth.uid;
+      allow update: if false;
+    }
+
+    // ---- Jugadores: un documento por celular (id anónimo) ------------------
+    match /jugadores/{uid} {
+      allow read: if true;
+      allow create: if esDueno(uid) && datosValidos() && request.resource.data.ultimoPuntaje == request.time;
+      // Los puntos nunca bajan y solo se pueden subir cada 30 s (salvo los primeros puntos).
+      // "ultimoPuntaje" es la hora del último cambio de puntos; cambiar el nombre no la mueve.
+      allow update: if esDueno(uid) && datosValidos() && noBajan()
+        && (mismosPuntos()
+              ? request.resource.data.ultimoPuntaje == resource.data.ultimoPuntaje
+              : request.resource.data.ultimoPuntaje == request.time
+                && (resource.data.total == 0 || request.time > resource.data.ultimoPuntaje + duration.value(30, 's')));
+      allow delete: if false;
+
+      function esDueno(uid) {
+        return request.auth != null && request.auth.uid == uid;
+      }
+      function puntoOk(v, maximo) {
+        return v is int && v >= 0 && v <= maximo;
+      }
+      function datosValidos() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['nombre', 'nombreMin', 'personaje', 'actualizado', 'ultimoPuntaje',
+                                 'total', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9', 'n10'])
+          && d.keys().hasAll(['nombre', 'nombreMin', 'personaje', 'actualizado', 'ultimoPuntaje',
+                              'total', 'n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8', 'n9', 'n10'])
+          && d.nombre is string && d.nombre.size() >= 3 && d.nombre.size() <= 16
+          && d.nombreMin is string && d.nombreMin.matches('^[a-z0-9_-]{3,16}$')
+          // el nombre debe estar reservado a nombre de este jugador
+          && getAfter(/databases/$(database)/documents/nombres/$(d.nombreMin)).data.uid == request.auth.uid
+          && d.personaje in ['vampiro', 'momia', 'bruja', 'lobo']
+          && d.actualizado == request.time
+          && puntoOk(d.n1, 6000) && puntoOk(d.n2, 6000) && puntoOk(d.n3, 6000) && puntoOk(d.n4, 6000)
+          && puntoOk(d.n5, 6000) && puntoOk(d.n6, 6000) && puntoOk(d.n7, 6000) && puntoOk(d.n8, 6000)
+          && puntoOk(d.n9, 6000) && puntoOk(d.n10, 6000)
+          && puntoOk(d.total, 60000)
+          // una partida no puede valer más que la suma de los mejores récords por noche (+500 por ganar)
+          && d.total <= d.n1 + d.n2 + d.n3 + d.n4 + d.n5 + d.n6 + d.n7 + d.n8 + d.n9 + d.n10 + 500;
+      }
+      function noBajan() {
+        let d = request.resource.data;
+        let a = resource.data;
+        return d.total >= a.total && d.n1 >= a.n1 && d.n2 >= a.n2 && d.n3 >= a.n3 && d.n4 >= a.n4
+          && d.n5 >= a.n5 && d.n6 >= a.n6 && d.n7 >= a.n7 && d.n8 >= a.n8 && d.n9 >= a.n9 && d.n10 >= a.n10;
+      }
+      function mismosPuntos() {
+        let d = request.resource.data;
+        let a = resource.data;
+        return d.total == a.total && d.n1 == a.n1 && d.n2 == a.n2 && d.n3 == a.n3 && d.n4 == a.n4
+          && d.n5 == a.n5 && d.n6 == a.n6 && d.n7 == a.n7 && d.n8 == a.n8 && d.n9 == a.n9 && d.n10 == a.n10;
+      }
+    }
+  }
+}
