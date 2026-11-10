@@ -608,7 +608,7 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
-const VERSION = '27 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
+const VERSION = '28 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
 const ANCHO = 540;                       // ancho lógico del mundo
 let ALTO = 960;                          // alto lógico: se ajusta a la forma de la pantalla (900 a 1200)
 const SANGRE_MAX = 100;
@@ -676,7 +676,7 @@ const MEJORAS = [
   { id: 'colmillos', nombre: 'Colmillos afilados', desc: '+6 de sangre por cada mordida.', precios: [25, 55, 95], color: '#ff6b7d' },
   { id: 'piel', nombre: 'Piel de piedra', desc: '-15% de daño de cazadores y estacas.', precios: [30, 65, 110], color: '#b8b3c9' },
   { id: 'aguante', nombre: 'Sed controlada', desc: 'Pierdes sangre un 12% más lento.', precios: [25, 55, 95], color: '#e08a2f' },
-  { id: 'siervos', nombre: 'Señor de siervos', desc: '+1 siervo a la vez (empiezas con 2).', precios: [50, 110], color: '#e0406a' },
+  { id: 'siervos', nombre: 'Señor de siervos', desc: 'Cada hechizo convierte 1 siervo más, recarga más rápido y +1 al máximo.', precios: [50, 110], color: '#e0406a' },
 ];
 // Monedas por acción
 const MONEDAS_MORDIDA = 1, MONEDAS_CAZADOR = 3, MONEDAS_NOCHE = 10;   // noche: 10 × número de noche
@@ -706,6 +706,10 @@ const sangrePorMordida = () => SANGRE_POR_MORDIDA + 6 * nivel('colmillos') + (es
 const factorDano = () => Math.max(0.3, 1 - 0.15 * nivel('piel')) * (es('momia') ? 0.7 : es('bruja') ? 1.15 : 1);
 const perdidaSangre = () => PERDIDA_SANGRE_SEG * Math.max(0.35, 1 - 0.12 * nivel('aguante')) * (es('momia') ? 0.8 : es('lobo') ? 1.25 : 1);
 const maxSiervos = () => Math.min(6, 2 + nivel('siervos'));
+// Señor de siervos: nivel 0 → 1 por hechizo y 5 s; nivel 1 → 2 y 4 s; nivel 2 → 3 y 3 s
+const siervosPorHechizo = () => 1 + nivel('siervos');
+const esperaSiervoTotal = () => SIERVO_ESPERA - nivel('siervos');
+const COSTO_SIERVO_EXTRA = 10;            // cada siervo extra del mismo hechizo cuesta menos sangre
 // Cada vuelta alcanzada sube 2 niveles el máximo de cada mejora; los niveles extra cuestan 50% más cada uno
 const maxNivel = (m) => m.precios.length + 2 * ((progreso.vueltaMax || 1) - 1);
 const precioMejora = (m, n) => (n < m.precios.length ? m.precios[n] : Math.round(m.precios[m.precios.length - 1] * Math.pow(1.5, n - m.precios.length + 1)));
@@ -2438,21 +2442,28 @@ function convertirSiervo() {
   const avisar = (t) => textoFlotante(vampiro.pos.x, vampiro.pos.y - 34, t, '#ff8a98');
   if (siervos.length >= maxSiervos()) return avisar(`Máximo ${maxSiervos()} siervos`);
   if (vampiro.sangre <= COSTO_SIERVO + 5) return avisar('Te falta sangre');
-  let elegido = null, dMin = RADIO_CONVERTIR;
-  for (const a of aldeanos) {
-    const d = largo(resta(a.pos, vampiro.pos));
-    if (d < dMin) { dMin = d; elegido = a; }
+  // Aldeanos al alcance, del más cercano al más lejano
+  const cerca = aldeanos
+    .map((a) => ({ a, d: largo(resta(a.pos, vampiro.pos)) }))
+    .filter((x) => x.d < RADIO_CONVERTIR)
+    .sort((x, y) => x.d - y.d);
+  if (!cerca.length) return avisar('Acércate a un aldeano');
+  // Cuántos convierte: lo que permita el nivel, el lugar libre y la sangre
+  let cuantos = Math.min(siervosPorHechizo(), maxSiervos() - siervos.length, cerca.length);
+  while (cuantos > 1 && vampiro.sangre <= COSTO_SIERVO + (cuantos - 1) * COSTO_SIERVO_EXTRA + 5) cuantos--;
+  const costo = COSTO_SIERVO + (cuantos - 1) * COSTO_SIERVO_EXTRA;
+  for (const { a } of cerca.slice(0, cuantos)) {
+    aldeanos = aldeanos.filter((x) => x !== a);
+    siervos.push(new Siervo(a));
+    ondas.push({ x: a.pos.x, y: a.pos.y, r: 5, max: 70, color: '200,20,60' });
+    salpicar(a.pos.x, a.pos.y, '#c8142a', 16);
   }
-  if (!elegido) return avisar('Acércate a un aldeano');
-  aldeanos = aldeanos.filter((a) => a !== elegido);
-  siervos.push(new Siervo(elegido));
-  avanzarMision('siervos', 1);
-  vampiro.sangre -= COSTO_SIERVO;
-  esperaSiervo = SIERVO_ESPERA;
+  avanzarMision('siervos', cuantos);
+  vampiro.sangre -= costo;
+  esperaSiervo = esperaSiervoTotal();
   Sonido.siervo();
-  ondas.push({ x: elegido.pos.x, y: elegido.pos.y, r: 5, max: 70, color: '200,20,60' });
-  salpicar(elegido.pos.x, elegido.pos.y, '#c8142a', 16);
-  textoFlotante(elegido.pos.x, elegido.pos.y - 26, `-${COSTO_SIERVO} sangre`, '#ff8a98');
+  textoFlotante(vampiro.pos.x, vampiro.pos.y - 34,
+    (cuantos > 1 ? `¡${cuantos} siervos! ` : '') + `-${costo} sangre`, '#ff8a98');
 }
 
 // Los siervos pelean con los cazadores que tocan
@@ -3686,7 +3697,7 @@ function actualizarBotones() {
   document.getElementById('costo-giro').textContent = costoGiro() || 'gratis';
   document.getElementById('btn-regirar').disabled = progreso.monedas < costoGiro();
   // Siervo: relleno mientras recarga; brilla si se puede usar
-  document.getElementById('carga-siervo').style.height = (1 - esperaSiervo / SIERVO_ESPERA) * 100 + '%';
+  document.getElementById('carga-siervo').style.height = (1 - esperaSiervo / esperaSiervoTotal()) * 100 + '%';
   document.getElementById('btn-siervo').classList.toggle('listo',
     esperaSiervo <= 0 && siervos.length < maxSiervos() && vampiro.sangre > COSTO_SIERVO + 5);
   // Hipnosis y enjambre: aparecen al desbloquearse; el relleno sube mientras se recargan

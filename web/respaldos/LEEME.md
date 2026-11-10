@@ -16,3 +16,4 @@ Para restaurar: copiar el archivo a `web/index.html`.
 - `vampiro-2026-11-10-v24-antes-animaciones.html`: versión 24, antes de las animaciones de personajes.
 - `vampiro-2026-11-10-v25-antes-sonidos-reales.html`: versión 25 (animaciones), antes de los sonidos grabados de licencia libre.
 - `vampiro-2026-11-10-v26-antes-musica-por-noche.html`: versión 26 (sonidos grabados), antes de una música distinta por noche.
+- `vampiro-2026-11-10-v27-antes-siervos-dobles.html`: versión 27 (música por noche), antes de que Señor de siervos convierta varios a la vez.
