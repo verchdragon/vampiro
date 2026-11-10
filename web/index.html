@@ -195,6 +195,16 @@
   }
   #btn-pantalla svg { width: 24px; height: 24px; fill: none; stroke: var(--hueso); stroke-width: 2.2; stroke-linecap: round; }
   #btn-pantalla:focus-visible, #btn-nueva:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
+  /* "Siguiente noche" en la pantalla de resultados, arriba del botón de la tienda */
+  #btn-siguiente {
+    position: fixed;
+    left: 50%; transform: translateX(-50%);
+    bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+    width: min(300px, calc(100% - 32px));
+    padding: 15px; border-radius: 14px; border: 0;
+    background: var(--sangre); color: #fff; font: 600 18px/1 var(--cuerpo);
+  }
+  #btn-siguiente:focus-visible { outline: 3px solid var(--luna); outline-offset: 3px; }
   /* "Empezar de nuevo" (cuando hay una partida guardada), arriba del botón de la tienda */
   #btn-nueva {
     position: fixed;
@@ -296,6 +306,7 @@
   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg>
 </button>
 <button id="btn-nueva" type="button" hidden>Empezar de nuevo</button>
+<button id="btn-siguiente" type="button" hidden>Siguiente noche</button>
 
 <button id="btn-sonido" type="button" aria-label="Silenciar sonido">
   <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -739,7 +750,7 @@ function aMundo(p) {
 }
 
 document.addEventListener('pointerdown', (e) => {
-  if (e.target.closest('#poderes, #btn-sonido, #btn-tienda, #tienda, #ruleta-botones, #btn-pausa, #btn-pantalla, #btn-nueva')) return;   // los botones tienen su propio manejo
+  if (e.target.closest('#poderes, #btn-sonido, #btn-tienda, #tienda, #ruleta-botones, #btn-pausa, #btn-pantalla, #btn-nueva, #btn-siguiente')) return;   // los botones tienen su propio manejo
   if (estado === 'pausa') { reanudar(); return; }    // tocar para seguir
   if (estado === 'ruleta') { if (ruleta.lista) jugarNoche(); return; }
   if (estado !== 'jugando') { continuar(); return; } // tocar para empezar / seguir
@@ -847,10 +858,23 @@ function dibujarEfectos() {
 
 // ---- Escenario: cementerio generado una vez por partida --------------------
 let decorado = [];
+// Centro del área jugable (debajo del marcador): ahí sale siempre el ataúd
+const ALTO_HUD = 130;
+const centroAtaud = () => ({ x: ANCHO / 2, y: ALTO_HUD + (ALTO - ALTO_HUD) / 2 });
+const ZONA_LIBRE = 110;                  // radio sin tumbas ni árboles alrededor del ataúd
+// Elige un punto al azar que no caiga en la zona libre del ataúd
+function puntoFueraDelAtaud(x0, x1, y0, y1, margen = 0) {
+  const c = centroAtaud();
+  for (let i = 0; i < 30; i++) {
+    const p = { x: azar(x0, x1), y: azar(y0, y1) };
+    if (largo(resta(p, c)) > ZONA_LIBRE + margen) return p;
+  }
+  return { x: x0, y: y1 };               // por si acaso: una esquina
+}
 function generarDecorado() {
   decorado = [];
-  for (let i = 0; i < 16; i++) decorado.push({ tipo: 'tumba', x: azar(30, ANCHO - 30), y: azar(130, ALTO - 30), g: azar(-0.15, 0.15) });
-  for (let i = 0; i < 7; i++) decorado.push({ tipo: 'arbol', x: azar(0, ANCHO), y: azar(0, ALTO), r: azar(26, 44) });
+  for (let i = 0; i < 16; i++) decorado.push({ tipo: 'tumba', ...puntoFueraDelAtaud(30, ANCHO - 30, ALTO_HUD, ALTO - 30), g: azar(-0.15, 0.15) });
+  for (let i = 0; i < 7; i++) { const r = azar(26, 44); decorado.push({ tipo: 'arbol', ...puntoFueraDelAtaud(0, ANCHO, 0, ALTO, r), r }); }
   for (let i = 0; i < 40; i++) decorado.push({ tipo: 'pasto', x: azar(0, ANCHO), y: azar(0, ALTO) });
   decorado.sort((a, b) => a.y - b.y);    // dibujar de atrás hacia delante
 }
@@ -861,6 +885,12 @@ function dibujarFondo(t) {
   g.addColorStop(1, '#0a0f12');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, ANCHO, ALTO);
+  // Tierra removida al centro: el lugar del ataúd del vampiro
+  const c = centroAtaud();
+  ctx.fillStyle = 'rgba(60,44,32,.55)';
+  ctx.beginPath(); ctx.ellipse(c.x, c.y + 6, 44, 70, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(90,66,48,.35)';
+  ctx.beginPath(); ctx.ellipse(c.x, c.y + 6, 30, 56, 0, 0, Math.PI * 2); ctx.fill();
   // Sendero de tierra
   ctx.strokeStyle = 'rgba(70,55,45,.45)'; ctx.lineWidth = 46; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(-20, ALTO * 0.7);
@@ -1444,7 +1474,15 @@ let tAmanecer = 0;                         // segundos desde que salió el sol
 let ataud = { x: 0, y: 0 };                // dónde aparece el ataúd
 let vampInicio = { x: 0, y: 0 };           // dónde estaba el vampiro al amanecer
 let sonoCierre = false, sonoFinal = false; // para que cada sonido suene una vez
-const DURACION_ESCENA = 2.8;               // después aparece el cartel de "¡Amaneció!"
+const DURACION_ESCENA = 3.3;               // después aparece el cartel de resultados
+// Línea de tiempo de la escena (segundos desde que termina la noche):
+// 0.0-0.6 sale el ataúd · 0.35 el vampiro se vuelve murciélago · 0.45-0.85 se abre la tapa
+// 0.6-1.9 vuela hasta el ataúd · 1.9-2.2 entra · 2.2-2.6 se cierra la tapa · 2.6 golpe
+const ESC_TRANSFORMA = 0.35, ESC_VUELO = [0.6, 1.9], ESC_ENTRA = [1.9, 2.2], ESC_CIERRA = [2.2, 2.6];
+let sonoTransforma = false;                // el sonido de transformación suena una vez
+// Resultados de la noche (se calculan una sola vez al amanecer)
+let resultado = { puntosNoche: 0, puntosTotales: 0, nuevoRecord: false };
+let puntajeInicioNoche = 0;                // puntaje al empezar la noche (para los puntos ganados)
 
 // Suma monedas al total guardado (se guardan al momento: no se pierden al perder)
 function ganarMonedas(n, x, y) {
@@ -1486,6 +1524,7 @@ function empezarNoche() {
   monedasNoche = 0;
   combo = 0; tCombo = 0; avisoCombo = null;
   tSpawn = 2.5;
+  puntajeInicioNoche = puntaje();
   guardarPartida();                        // por si el juego se cierra a media noche
   iniciarRuleta();                         // primero la ruleta del poder de la noche
 }
@@ -1512,6 +1551,7 @@ function seguirPartida() {
   vampiro = new Vampiro();
   empezarNoche();
 }
+document.getElementById('btn-siguiente').addEventListener('click', () => continuar());
 document.getElementById('btn-nueva').addEventListener('click', () => {
   borrarPartida(); reembolso = 0; mantenerEncendida(); nuevaPartida();
 });
@@ -1563,14 +1603,37 @@ function lanzarNiebla() {
     return true;
   });
 }
+// ---- Fin de la noche ------------------------------------------------------
+// Se llama UNA sola vez (al cambiar a 'amanecer'): así los premios no se duplican.
+function terminarNoche() {
+  if (estado !== 'jugando') return;      // protección extra contra doble llamada
+  estado = 'amanecer';
+  momentoPausa = performance.now();
+  joystick.activo = false; joystick.id = null;   // el joystick deja de responder
+  teclas.clear();
+  victoria = noche === NOCHE_FINAL;      // ¡sobrevivió las 10 noches!
+  empezarEscenaAtaud();
+  ganarMonedas(MONEDAS_NOCHE * noche);   // premio por sobrevivir la noche
+  if (victoria) ganarMonedas(200);       // premio por ganar el juego
+  // Resultados: puntos de esta noche, totales y récord
+  const total = puntaje() + 100;         // +100 por la noche superada
+  resultado = { puntosNoche: total - puntajeInicioNoche, puntosTotales: total, nuevoRecord: total > mejor };
+  if (resultado.nuevoRecord) { mejor = total; guardarRecord(); }
+  // Guardado: si cierras el juego en los resultados, sigues en la noche siguiente
+  // (y como la partida ya apunta a la siguiente noche, esta no se vuelve a cobrar)
+  if (victoria) borrarPartida();         // noche 10 ganada: no existe la noche 11
+  else {
+    progreso.partida = { noche: noche + 1, mordidas, eliminados, tiempoTotal, monedasPartida, mejorCombo };
+    guardarProgreso();
+  }
+}
+
 // ---- Escena del amanecer: el ataúd ----------------------------------------
 function empezarEscenaAtaud() {
-  tAmanecer = 0; sonoCierre = false; sonoFinal = false;
+  tAmanecer = 0; sonoCierre = false; sonoFinal = false; sonoTransforma = false;
   vampInicio = { ...vampiro.pos };
   vampiro.tInv = 0; vampiro.tMurc = 0;
-  // El ataúd sale del suelo a un lado del vampiro (hacia el centro de la pantalla)
-  const lado = vampiro.pos.x > ANCHO / 2 ? -70 : 70;
-  ataud = { x: Math.max(40, Math.min(ANCHO - 40, vampiro.pos.x + lado)), y: Math.max(170, Math.min(ALTO - 70, vampiro.pos.y)) };
+  ataud = centroAtaud();                 // el ataúd sale siempre en el centro
   // Las estacas en el aire caen y el enjambre se va
   estacas.forEach((e) => salpicar(e.x, e.y, '#a07040', 4, 50));
   estacas = []; enjambre = []; tEnjambreActivo = 0; avisoCombo = null;
@@ -1583,26 +1646,72 @@ function empezarEscenaAtaud() {
 const suave = (k) => k * k * (3 - 2 * k);                  // aceleración suave (0..1)
 const tramo = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));   // progreso de t entre a y b
 
+// Posición del murciélago en la escena: vuelo suave en arco desde donde estaba hasta el ataúd
+// (dura lo mismo sin importar la distancia)
+function posicionVuelo() {
+  const k = suave(tramo(tAmanecer, ESC_VUELO[0], ESC_VUELO[1]));
+  const arco = Math.sin(k * Math.PI) * Math.min(90, 30 + largo(resta(ataud, vampInicio)) * 0.25);
+  return {
+    x: vampInicio.x + (ataud.x - vampInicio.x) * k,
+    y: vampInicio.y + (ataud.y - 20 - vampInicio.y) * k - arco,   // llega sobre la caja abierta
+  };
+}
 function animarAmanecer(dt) {
   tAmanecer += dt;
-  // El vampiro camina hasta el ataúd (0.7 s → 1.5 s)
-  const k = suave(tramo(tAmanecer, 0.7, 1.5));
-  vampiro.pos = { x: vampInicio.x + (ataud.x - vampInicio.x) * k, y: vampInicio.y + (ataud.y - vampInicio.y) * k };
-  if (k > 0 && k < 1) {
-    vampiro.paso += dt * 10;
-    const d = resta(ataud, vampInicio);
-    if (largo(d) > 1) vampiro.dir = normal(d);
+  // Transformación en murciélago: nube de humo morado
+  if (tAmanecer > ESC_TRANSFORMA && !sonoTransforma) {
+    sonoTransforma = true;
+    Sonido.murcielago();
+    salpicar(vampInicio.x, vampInicio.y, '#6e2a8c', 24, 150);
   }
-  if (tAmanecer > 2.1 && !sonoCierre) { sonoCierre = true; Sonido.ataudCierra(); salpicar(ataud.x, ataud.y, '#5a4636', 12, 90); }
+  if (tAmanecer > ESC_CIERRA[1] && !sonoCierre) { sonoCierre = true; Sonido.ataudCierra(); salpicar(ataud.x, ataud.y + 20, '#5a4636', 12, 90); }
   if (tAmanecer > DURACION_ESCENA && !sonoFinal) { sonoFinal = true; Sonido.amanecer(); if (victoria) Sonido.victoria(); }
+}
+
+// Tabla de resultados de la noche: puntos, monedas y récord
+function dibujarResultados(y0, notaMonedas) {
+  const x = ANCHO / 2 - 150, w = 300;
+  ctx.fillStyle = 'rgba(12,8,20,.75)';
+  ctx.beginPath(); ctx.roundRect(x, y0 - 22, w, 168, 14); ctx.fill();
+  const fila = (i, etiqueta, valor, color) => {
+    texto(etiqueta, x + 20, y0 + i * 36, 15, '#c9c3dc', 'cuerpo', 'left');
+    texto(valor, x + w - 20, y0 + i * 36, 18, color, 'cuerpo', 'right');
+  };
+  fila(0, 'Puntos de la noche', `+${resultado.puntosNoche}`, '#ffcf6b');
+  fila(1, 'Puntos totales', String(resultado.puntosTotales), '#efe9e1');
+  fila(2, 'Monedas obtenidas', `+${monedasNoche}`, '#f0be46');
+  fila(3, 'Récord personal', resultado.nuevoRecord ? `${mejor} · ¡Nuevo!` : String(mejor), resultado.nuevoRecord ? '#7fd69d' : '#efe9e1');
+  if (notaMonedas) texto(notaMonedas, ANCHO / 2, y0 + 160, 13, '#f0be46');
+  monedasCentradas(y0 + (notaMonedas ? 188 : 172), 18);
+}
+
+// Murciélago dibujado en canvas (alas que aletean), para la escena del amanecer
+function dibujarMurcielago(x, y, t, esc = 1) {
+  const aleteo = Math.sin(t * 38) * 8;
+  ctx.save(); ctx.translate(x, y); ctx.scale(esc, esc);
+  sombra(0, 26, 14, 4);
+  ctx.fillStyle = '#2a1036';
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.quadraticCurveTo(-14, -14 - aleteo, -28, -6 - aleteo);
+  ctx.quadraticCurveTo(-20, 2, -16, 8);
+  ctx.quadraticCurveTo(-8, 2, 0, 6);
+  ctx.quadraticCurveTo(8, 2, 16, 8);
+  ctx.quadraticCurveTo(20, 2, 28, -6 - aleteo);
+  ctx.quadraticCurveTo(14, -14 - aleteo, 0, 0);
+  ctx.fill();
+  circulo(0, 0, 6, '#1a0a22');
+  ctx.fillStyle = '#1a0a22'; tri(-5, -3, -3, -10, -1, -4); tri(5, -3, 3, -10, 1, -4);   // orejas
+  circulo(-2, -1, 1.5, '#ff3b4e'); circulo(2, -1, 1.5, '#ff3b4e');                        // ojos
+  ctx.restore();
 }
 
 // Dibuja el ataúd (forma clásica de seis lados) con el vampiro según la escena
 function dibujarAtaud(t) {
   const A = tAmanecer;
   const sube = suave(tramo(A, 0, 0.6));                     // sale del suelo
-  const abre = suave(tramo(A, 0.45, 0.85)) - suave(tramo(A, 1.7, 2.1));   // tapa: abre y cierra
-  const temblor = A > 2.1 && A < 2.4 ? Math.sin(A * 80) * 1.5 : 0;
+  const abre = suave(tramo(A, 0.45, 0.85)) - suave(tramo(A, ESC_CIERRA[0], ESC_CIERRA[1]));   // tapa: abre y cierra
+  const temblor = A > ESC_CIERRA[1] && A < ESC_CIERRA[1] + 0.3 ? Math.sin(A * 80) * 1.5 : 0;
   const forma = (esc) => {                                   // contorno del ataúd
     const p = [[-11, -43], [11, -43], [17, -22], [13, 43], [-13, 43], [-17, -22]];
     ctx.beginPath();
@@ -1618,8 +1727,8 @@ function dibujarAtaud(t) {
   ctx.fillStyle = '#2a1a10'; forma(1); ctx.fill();
   ctx.fillStyle = '#7a0c1c'; forma(0.8); ctx.fill();
   ctx.fillStyle = '#e9d9dd'; ctx.beginPath(); ctx.ellipse(0, -27, 9, 5, 0, 0, Math.PI * 2); ctx.fill();   // almohada
-  // El vampiro ya acostado (desde 1.5 s): cabeza, capa y manos cruzadas
-  if (A >= 1.5) {
+  // Ya dentro, vuelve a su forma y queda acostado: cabeza, capa y manos cruzadas
+  if (A >= ESC_ENTRA[1]) {
     ctx.fillStyle = '#16121e'; ctx.beginPath(); ctx.ellipse(0, 8, 10, 24, 0, 0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#a3001c'; tri(-10, -14, -3, -10, -9, 0); tri(10, -14, 3, -10, 9, 0);   // cuello de la capa
     circulo(0, -24, 8, '#e9e4ef');
@@ -1638,12 +1747,19 @@ function dibujarAtaud(t) {
   ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(0, 10); ctx.moveTo(-8, -18); ctx.lineTo(8, -18); ctx.stroke();
   ctx.restore();
   ctx.restore();
-  // Antes de acostarse, el vampiro camina de pie hacia el ataúd
-  if (A < 1.5) vampiro.dibujar(t);
+  // Antes de transformarse: el vampiro de pie (parpadea justo antes del humo)
+  if (A < ESC_TRANSFORMA) {
+    if (Math.floor(A * 20) % 2 === 0) vampiro.dibujar(t);
+  } else if (A < ESC_ENTRA[1]) {
+    // Murciélago volando; al final se encoge para entrar en la caja
+    const p = A < ESC_ENTRA[0] ? posicionVuelo() : { x: ataud.x, y: ataud.y - 20 + 30 * tramo(A, ESC_ENTRA[0], ESC_ENTRA[1]) };
+    const esc = 1.3 - 0.9 * tramo(A, ESC_ENTRA[0], ESC_ENTRA[1]);
+    dibujarMurcielago(p.x, p.y, t, esc);
+  }
   // Zzz flotando cuando ya está dormido
-  if (A > 2.3) {
+  if (A > ESC_CIERRA[1] + 0.1) {
     for (let i = 0; i < 3; i++) {
-      const f = ((A - 2.3) * 0.6 + i / 3) % 1;
+      const f = ((A - ESC_CIERRA[1] - 0.1) * 0.6 + i / 3) % 1;
       ctx.globalAlpha = 1 - f;
       texto('z', ataud.x + 18 + f * 20, ataud.y - 40 - f * 50, 14 + f * 10, '#e8e4c9', 'display');
     }
@@ -1778,13 +1894,7 @@ function actualizar(dt) {
     Sonido.derrota();
     if (puntaje() > mejor) { mejor = puntaje(); guardarRecord(); }
   } else if (tiempoNoche >= DURACION_NOCHE) {   // ¡sobrevivió hasta el amanecer!
-    estado = 'amanecer';
-    momentoPausa = performance.now();
-    victoria = noche === NOCHE_FINAL;    // ¡sobrevivió las 10 noches!
-    empezarEscenaAtaud();
-    ganarMonedas(MONEDAS_NOCHE * noche);  // premio por sobrevivir la noche
-    if (victoria) ganarMonedas(200);      // premio por ganar el juego
-    if (puntaje() + 100 > mejor) { mejor = puntaje() + 100; guardarRecord(); }
+    terminarNoche();
   }
 }
 
@@ -1990,25 +2100,19 @@ function dibujar(t) {
     // Pantalla de victoria final
     ctx.globalAlpha = Math.min(1, (tAmanecer - DURACION_ESCENA) / 0.4);
     velo('rgba(40,15,0,.7)');
-    texto('¡Venciste!', ANCHO / 2, ALTO / 2 - 120, 90, '#f0be46', 'display');
-    texto(`Sobreviviste las ${NOCHE_FINAL} noches.`, ANCHO / 2, ALTO / 2 - 40, 22, '#efe9e1');
-    texto('Eres el señor de la noche.', ANCHO / 2, ALTO / 2 - 10, 18, '#efe9e1');
-    texto(`Puntos: ${puntaje() + 100}`, ANCHO / 2, ALTO / 2 + 30, 20, '#ffcf6b');
-    texto(`+${monedasNoche} monedas (incluye +200 por ganar)`, ANCHO / 2, ALTO / 2 + 64, 16, '#f0be46');
-    monedasCentradas(ALTO / 2 + 98, 20);
-    texto('Toca para volver al inicio', ANCHO / 2, ALTO / 2 + 170, 30, '#e8e4c9', 'display');
+    texto('¡Venciste!', ANCHO / 2, ALTO / 2 - 190, 90, '#f0be46', 'display');
+    texto(`Sobreviviste las ${NOCHE_FINAL} noches.`, ANCHO / 2, ALTO / 2 - 120, 22, '#efe9e1');
+    texto('Eres el señor de la noche.', ANCHO / 2, ALTO / 2 - 92, 17, '#efe9e1');
+    dibujarResultados(ALTO / 2 - 50, '(incluye +200 por ganar)');
     ctx.globalAlpha = 1;
   } else if (estado === 'amanecer' && tAmanecer > DURACION_ESCENA) {
     ctx.globalAlpha = Math.min(1, (tAmanecer - DURACION_ESCENA) / 0.4);   // el cartel aparece suave
     velo('rgba(40,15,0,.6)');
-    texto('¡Amaneció!', ANCHO / 2, ALTO / 2 - 90, 84, '#ffb347', 'display');
-    texto(`Sobreviviste la noche ${noche}.`, ANCHO / 2, ALTO / 2 - 10, 20, '#efe9e1');
-    texto('Te escondes en tu ataúd hasta la próxima.', ANCHO / 2, ALTO / 2 + 18, 17, '#efe9e1');
-    texto(`Puntos: ${puntaje() + 100}  (+100 por la noche)`, ANCHO / 2, ALTO / 2 + 56, 18, '#ffcf6b');
-    texto(`+${monedasNoche} monedas esta noche`, ANCHO / 2, ALTO / 2 + 96, 18, '#f0be46');
-    monedasCentradas(ALTO / 2 + 130, 20);
-    if (AVISOS_NOCHE[noche + 1]) texto(`Próxima noche: ${AVISOS_NOCHE[noche + 1].toLowerCase()}`, ANCHO / 2, ALTO / 2 + 166, 14, '#ff6b7d');
-    texto(`Toca para empezar la noche ${noche + 1}`, ANCHO / 2, ALTO / 2 + 220, 30, '#e8e4c9', 'display');
+    texto('¡Amaneció!', ANCHO / 2, ALTO / 2 - 190, 84, '#ffb347', 'display');
+    texto(`Noche ${noche} de ${NOCHE_FINAL} completada`, ANCHO / 2, ALTO / 2 - 120, 22, '#efe9e1');
+    texto('El vampiro descansa en su ataúd.', ANCHO / 2, ALTO / 2 - 92, 16, '#c9c3dc');
+    dibujarResultados(ALTO / 2 - 50, '');
+    if (AVISOS_NOCHE[noche + 1]) texto(`Próxima noche: ${AVISOS_NOCHE[noche + 1].toLowerCase()}`, ANCHO / 2, ALTO / 2 + 140, 14, '#ff6b7d');
     ctx.globalAlpha = 1;
   } else if (estado === 'fin') {
     velo();
@@ -2045,6 +2149,11 @@ function actualizarBotones() {
   btnPantalla.hidden = !fsPermitida || !!(document.fullscreenElement || document.webkitFullscreenElement) || !tiendaEl.hidden;
   // "Empezar de nuevo": en el inicio, si hay una partida guardada
   document.getElementById('btn-nueva').hidden = !(estado === 'inicio' && hayPartidaGuardada() && tiendaEl.hidden);
+  // Resultados de la noche: "Siguiente noche" (o "Volver al inicio" tras ganar la noche 10)
+  const btnSig = document.getElementById('btn-siguiente');
+  btnSig.hidden = !(estado === 'amanecer' && tAmanecer > DURACION_ESCENA && tiendaEl.hidden);
+  btnSig.textContent = victoria ? 'Volver al inicio' : `Siguiente noche (${noche + 1})`;
+  if (!btnSig.hidden) btnPantalla.hidden = true;   // no encimar botones en los resultados
   // Ruleta: botones cuando ya se detuvo
   document.getElementById('ruleta-botones').hidden = !(estado === 'ruleta' && ruleta.lista);
   document.getElementById('costo-giro').textContent = costoGiro();
@@ -2073,6 +2182,9 @@ const botonPrecio = (precio) => `<span class="moneda"></span>${precio}`;
 
 function pintarTienda() {
   document.getElementById('saldo').textContent = progreso.monedas;
+  // Desde los resultados, cerrar la tienda lleva a la ruleta de la siguiente noche
+  document.getElementById('cerrar-tienda').textContent =
+    estado === 'amanecer' && !victoria ? `Ir a la noche ${noche + 1}` : 'Volver al juego';
   // Mejoras: varios niveles con precio creciente
   document.getElementById('lista-mejoras').innerHTML = MEJORAS.map((m) => {
     const n = nivel(m.id), max = m.precios.length;
@@ -2093,6 +2205,7 @@ tiendaEl.addEventListener('click', (e) => {
     if (precio !== undefined && progreso.monedas >= precio) { progreso.monedas -= precio; progreso.niveles[m.id] = nivel(m.id) + 1; Sonido.compra(); }
   } else if (b.id === 'cerrar-tienda') {
     tiendaEl.hidden = true;
+    if (estado === 'amanecer' && !victoria) { noche++; empezarNoche(); return; }   // resultados → ruleta
     momentoPausa = performance.now() - 500;   // evita que el mismo toque inicie la partida
     return;
   }
