@@ -105,7 +105,7 @@
   /* Panel de la tienda: ocupa la pantalla y se desplaza si no cabe */
   #tienda {
     position: fixed; inset: 0;
-    background: rgba(8,6,14,.94);
+    background: #08060e;                 /* opaco: no se ve el juego detrás */
     overflow-y: auto;
     padding-block: calc(20px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-bottom, 0px));
     padding-left: max(16px, env(safe-area-inset-left, 0px));
@@ -192,7 +192,7 @@
   /* Pestañas: "General" a lo ancho y las 10 noches en dos filas de 5 (todas visibles) */
   .pestanas { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
   .pestanas button { border-color: #3a3450; color: #c9c3dc; background: transparent; padding: 10px 0; text-align: center; font-variant-numeric: tabular-nums; }
-  .pestanas .general { grid-column: 1 / -1; }
+  .pestanas .periodos { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
   .pestanas .rotulo { grid-column: 1 / -1; margin: 4px 0 -2px; color: #a9a3c2; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; }
   .titulo-tabla { margin: 4px 0 0; color: var(--hueso); font: 600 16px/1.3 var(--cuerpo); }
   .pestanas button[aria-pressed="true"] { border-color: var(--oro); color: var(--oro); background: rgba(240,190,70,.12); }
@@ -403,7 +403,10 @@
       <h2>Tienda</h2>
       <div class="saldo"><span class="moneda"></span><span id="saldo">0</span></div>
     </div>
-    <p style="margin:0;color:#c9c3dc;font-size:13px;line-height:1.4">Los poderes ahora salen en la ruleta al empezar cada noche. Aquí compras mejoras que duran para siempre.</p>
+    <p style="margin:0;color:#c9c3dc;font-size:13px;line-height:1.4">Los poderes salen en la ruleta de cada noche. Aquí compras mejoras y personajes que duran para siempre.</p>
+    <h3>Misiones</h3>
+    <p class="nota-tienda">Cúmplelas jugando y gana monedas extra. Al terminar una, llega otra.</p>
+    <div id="lista-misiones" class="tienda-caja"></div>
     <h3>Personajes</h3>
     <p class="nota-tienda" id="nota-personajes">Cómpralos con monedas o gana uno cada vez que termines las 10 noches.</p>
     <div id="lista-personajes" class="tienda-caja"></div>
@@ -464,7 +467,7 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
-const VERSION = '21 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
+const VERSION = '22 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
 const ANCHO = 540;                       // ancho lógico del mundo
 let ALTO = 960;                          // alto lógico: se ajusta a la forma de la pantalla (900 a 1200)
 const SANGRE_MAX = 100;
@@ -492,6 +495,7 @@ const TIROS = {
   normal:     { dist: 230, vel: 380, alcance: 260, espera: [2.5, 4] },
   ballestero: { dist: 330, vel: 500, alcance: 380, espera: [2.2, 3.2] },
   jefe:       { dist: 340, vel: 420, alcance: 380, espera: [2, 2.8] },
+  sacerdote:  { dist: 300, vel: 0,   alcance: 0,   espera: [3, 4.5] },   // lanza un frasco de agua bendita
 };
 
 // Dificultad según el número de noche (1-3 fácil, 4-6 medio, 7-9 difícil, 10 final)
@@ -503,6 +507,7 @@ const maxCazadores = (n) => Math.min(12 + 4 * (vuelta - 1), n + 2 + 2 * (vuelta 
 const velCazador = (n, t) => Math.min(185 + 20 * (vuelta - 1), (65 + n * 9 + t * 0.6) * fVuelta());
 const intervaloSpawn = (n) => Math.max(0.9, (4.6 - n * 0.35) / fVuelta());
 const probEstacas = (n) => (vuelta > 1 ? (n < 3 ? 0.5 : 1) : n < 3 ? 0 : n === 3 ? 0.35 : n === 4 ? 0.6 : 1);   // cuántos lanzan estacas
+const probSacerdote = (n) => (vuelta > 1 ? (n < 3 ? 0 : 0.2) : n < 6 ? 0 : Math.min(0.3, 0.12 + (n - 6) * 0.05));
 const probBallestero = (n) => (n < 4 ? 0 : Math.min(0.4, 0.15 + (n - 4) * 0.05));
 const nombreDificultad = (n) => (n <= 3 ? ['Fácil', '#7fd69d'] : n <= 6 ? ['Medio', '#ffcf6b'] : n <= 9 ? ['Difícil', '#ff6b7d'] : ['Noche final', '#d9a6ff']);
 // Aviso de lo nuevo en cada noche
@@ -510,6 +515,7 @@ const AVISOS_NOCHE = {
   3: 'Algunos cazadores ya lanzan estacas',
   4: 'Llegan los ballesteros: disparan de lejos',
   5: 'Todos los cazadores lanzan estacas',
+  6: 'Llegan los sacerdotes: lanzan agua bendita',
   7: 'Los cazadores son más rápidos',
   10: 'Llega El Inquisidor, el jefe de los cazadores',
 };
@@ -575,7 +581,44 @@ const PERSONAJES = [
   { id: 'lobo', nombre: 'Hombre lobo', precio: 800, color: '#d9b38a',
     desc: '15% más rápido y +8 de sangre por mordida. Garras: cada 6 s elimina a un cazador al tocarlo. Pierde sangre más rápido.' },
 ];
-const ORDEN_DESBLOQUEO = ['momia', 'bruja', 'lobo'];   // al ganar las 10 noches
+const ORDEN_DESBLOQUEO = ['momia', 'bruja', 'lobo'];
+
+// ---- Misiones: 3 a la vez; al cumplirlas dan monedas y llega otra --------
+// "acumula": el progreso se suma entre partidas; si no, cuenta el mejor resultado.
+const plural = (n, uno, varios) => `${n} ${n === 1 ? uno : varios}`;   // "1 guardia", "3 guardias"
+const TIPOS_MISION = {
+  mordidas:  { texto: (m) => `Muerde ${plural(m, 'aldeano', 'aldeanos')}`, metas: [15, 25, 40, 60], acumula: true },
+  cazadores: { texto: (m) => `Elimina ${plural(m, 'cazador', 'cazadores')}`, metas: [10, 20, 35, 50], acumula: true },
+  combo:     { texto: (m) => `Haz un combo x${m}`, metas: [2, 3, 4, 5], acumula: false },
+  noche:     { texto: (m) => `Llega al amanecer de la noche ${m}`, metas: [2, 4, 6, 8], acumula: false },
+  siervos:   { texto: (m) => `Convierte ${plural(m, 'siervo', 'siervos')}`, metas: [2, 5, 9, 14], acumula: true },
+  guardias:  { texto: (m) => `Muerde ${plural(m, 'guardia', 'guardias')} (cánsalos primero)`, metas: [1, 3, 5, 8], acumula: true },
+};
+function nuevaMision(excluir) {
+  const nivelM = Math.min(3, Math.floor((progreso.misionesHechas || 0) / 3));   // se ponen más difíciles poco a poco
+  const tipos = Object.keys(TIPOS_MISION).filter((t) => !excluir.includes(t));
+  const t = tipos[Math.floor(Math.random() * tipos.length)];   // (se usa al cargar, antes de "elegir")
+  return { t, meta: TIPOS_MISION[t].metas[nivelM], prog: 0, premio: 30 + nivelM * 25 + (TIPOS_MISION[t].acumula ? 0 : 15) };
+}
+if (!Array.isArray(progreso.misiones)) progreso.misiones = [];
+while (progreso.misiones.length < 3) progreso.misiones.push(nuevaMision(progreso.misiones.map((m) => m.t)));
+// Suma progreso a las misiones de ese tipo (o guarda el mejor valor si no se acumula)
+function avanzarMision(tipo, valor) {
+  let cambio = false;
+  progreso.misiones.forEach((m, i) => {
+    if (m.t !== tipo) return;
+    m.prog = TIPOS_MISION[tipo].acumula ? m.prog + valor : Math.max(m.prog, valor);
+    cambio = true;
+    if (m.prog >= m.meta) {              // ¡cumplida!
+      progreso.misionesHechas = (progreso.misionesHechas || 0) + 1;
+      ganarMonedas(m.premio);
+      mostrarCartel('¡Misión cumplida!', `${TIPOS_MISION[tipo].texto(m.meta)} · +${m.premio}`, '#7fd69d');
+      Sonido.nuevoPoder();
+      progreso.misiones[i] = nuevaMision(progreso.misiones.map((x) => x.t));
+    }
+  });
+  if (cambio) guardarProgreso();
+}   // al ganar las 10 noches
 const GARRAS_ESPERA = 6;                 // recarga de las garras del hombre lobo
 if (!progreso.personajes) progreso.personajes = { vampiro: true };
 if (!progreso.personaje || !progreso.personajes[progreso.personaje]) progreso.personaje = 'vampiro';
@@ -593,6 +636,16 @@ const MAX_PUNTOS_NOCHE = 6000, MAX_PUNTOS_TOTAL = 60000;   // los mismos topes q
 if (!progreso.rank) progreso.rank = { nombre: '', mejores: {}, pendiente: false };
 if (!progreso.rank.mejores) progreso.rank.mejores = {};
 for (const k of CLAVES_RANK) progreso.rank.mejores[k] = Math.max(0, Math.floor(Number(progreso.rank.mejores[k]) || 0));
+// Ranking de hoy y de la semana: número de día y de semana según la hora del celular
+const diaActual = () => Math.floor((Date.now() - new Date().getTimezoneOffset() * 60000) / 86400000);
+const semanaActual = () => Math.floor((diaActual() + 3) / 7);   // semanas de lunes a domingo
+// Mejor partida de hoy y de esta semana (se reinician solas al cambiar el día o la semana)
+function puntosPeriodo(clave) {
+  const r = progreso.rank;
+  const actual = clave === 'hoy' ? diaActual() : semanaActual();
+  if (!r[clave] || r[clave].id !== actual) r[clave] = { id: actual, pts: 0 };
+  return r[clave];
+}
 const factorRecarga = () => (es('bruja') ? 0.6 : 1);          // la bruja recarga poderes 40% más rápido
 const mordidasNiebla = () => (es('bruja') ? 3 : MORDIDAS_PARA_NIEBLA);
 
@@ -1728,10 +1781,28 @@ function dibujarRetrato(lienzoRetrato, id, tam = 56) {
   try { const v = new Vampiro(); v.pos = { x: 28, y: 32 }; v.dibujar(0); } finally { ctx = real; personajeActual = previo; }
 }
 
+// Tipos de aldeano: normal, niño (rápido, poca sangre), anciano (lento, mucha sangre)
+// y guardia (se defiende: hay que cansarlo antes de poder morderlo)
+const TIPOS_ALDEANO = {
+  normal:  { vel: 85,  huida: 125, aguante: 2,   bonus: 0,  escala: 1 },
+  nino:    { vel: 100, huida: 155, aguante: 2.5, bonus: -8, escala: 0.8 },
+  anciano: { vel: 50,  huida: 70,  aguante: 1,   bonus: 12, escala: 1 },
+  guardia: { vel: 80,  huida: 115, aguante: 3,   bonus: 6,  escala: 1.05 },
+};
+function tipoAldeanoAlAzar() {
+  const n = noche || 1, r = Math.random();
+  if (n >= 3 && r < 0.12) return 'guardia';
+  if (n >= 2 && r < 0.27) return 'nino';
+  if (n >= 2 && r < 0.42) return 'anciano';
+  return 'normal';
+}
 class Aldeano {
   static RADIO = 11; static VEL = 85; static VEL_HUIDA = 125; static VEL_CANSADO = 55; static MIEDO = 140;
   static AGUANTE = 2;                    // segundos que pueden correr antes de cansarse
-  constructor() {
+  constructor(tipo) {
+    this.tipo = tipo || tipoAldeanoAlAzar();
+    const t = TIPOS_ALDEANO[this.tipo];
+    this.vel = t.vel; this.velHuida = t.huida; this.aguante = t.aguante; this.bonus = t.bonus; this.escala = t.escala;
     this.pos = { x: azar(40, ANCHO - 40), y: azar(130, ALTO - 40) };
     const a = azar(0, Math.PI * 2);
     this.dir = { x: Math.cos(a), y: Math.sin(a) };
@@ -1739,7 +1810,9 @@ class Aldeano {
     this.ropa = elegir(['#3f6fc4', '#b5763a', '#4d8a5b', '#a4487a']);
     this.pelo = elegir(['#3b2416', '#c99a4a', '#1a1a1a', '#7a3b1e']);
     this.asustado = false;
-    this.energia = Aldeano.AGUANTE;      // se gasta al huir y se recupera al calmarse
+    this.energia = this.aguante;         // se gasta al huir y se recupera al calmarse
+    if (this.tipo === 'anciano') this.pelo = '#d4d4dc';   // canas
+    if (this.tipo === 'guardia') this.ropa = '#5a5f6a';   // uniforme gris
     this.paso = azar(0, 6);
   }
   actualizar(dt) {
@@ -1748,21 +1821,21 @@ class Aldeano {
     this.asustado = d > 0 && d < Aldeano.MIEDO;
     if (this.asustado) {                 // huir del vampiro (más lento si está cansado)
       this.energia = Math.max(0, this.energia - dt);
-      const vel = this.energia > 0 ? Aldeano.VEL_HUIDA : Aldeano.VEL_CANSADO;
+      const vel = this.energia > 0 ? this.velHuida : Math.min(this.velHuida, Aldeano.VEL_CANSADO);
       const n = normal(lejos);
       this.pos.x += n.x * vel * dt;
       this.pos.y += n.y * vel * dt;
       this.paso += dt * 16;
     } else {                             // paseo aleatorio
-      this.energia = Math.min(Aldeano.AGUANTE, this.energia + dt * 0.5);   // recuperar el aliento
+      this.energia = Math.min(this.aguante, this.energia + dt * 0.5);   // recuperar el aliento
       this.tCambio -= dt;
       if (this.tCambio <= 0) {
         const giro = azar(-2.1, 2.1), c = Math.cos(giro), s = Math.sin(giro);
         this.dir = { x: this.dir.x * c - this.dir.y * s, y: this.dir.x * s + this.dir.y * c };
         this.tCambio = azar(1, 3);
       }
-      this.pos.x += this.dir.x * Aldeano.VEL * dt;
-      this.pos.y += this.dir.y * Aldeano.VEL * dt;
+      this.pos.x += this.dir.x * this.vel * dt;
+      this.pos.y += this.dir.y * this.vel * dt;
       this.paso += dt * 9;
     }
     const r = Aldeano.RADIO;             // rebotar en los bordes
@@ -1773,12 +1846,28 @@ class Aldeano {
   dibujar() {
     const { x } = this.pos;
     const y = this.pos.y + Math.abs(Math.sin(this.paso)) * -2;  // saltito al caminar
+    ctx.save();
+    if (this.escala !== 1) { ctx.translate(x, this.pos.y); ctx.scale(this.escala, this.escala); ctx.translate(-x, -this.pos.y); }
     sombra(x, this.pos.y + 17, 11, 4);
+    if (this.tipo === 'anciano') {       // bastón
+      ctx.strokeStyle = '#6a4a2a'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(x + 11, y); ctx.lineTo(x + 13, y + 18); ctx.stroke();
+    }
+    if (this.tipo === 'guardia') {       // lanza
+      ctx.strokeStyle = '#7a5a3a'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(x + 12, y + 16); ctx.lineTo(x + 12, y - 22); ctx.stroke();
+      ctx.fillStyle = '#c9c9d1'; tri(x + 9, y - 20, x + 15, y - 20, x + 12, y - 29);
+    }
     ctx.fillStyle = this.ropa;
     ctx.beginPath(); ctx.ellipse(x, y + 7, 10, 10, 0, 0, Math.PI * 2); ctx.fill();
     circulo(x, y - 6, 8, '#eac39c');
     ctx.fillStyle = this.pelo;
     ctx.beginPath(); ctx.arc(x, y - 7, 8, Math.PI, 0); ctx.fill();
+    if (this.tipo === 'guardia') {       // casco
+      ctx.fillStyle = '#8a8f9a'; ctx.beginPath(); ctx.arc(x, y - 8, 9, Math.PI, 0); ctx.fill();
+      ctx.fillRect(x - 10, y - 9, 20, 2.5);
+    }
+    ctx.restore();
     if (this.asustado && this.energia > 0) texto('!', x + 12, y - 16, 18, '#ffe08a', 'cuerpo');
     else if (this.asustado) {            // cansado: gota de sudor azul
       ctx.fillStyle = '#7fd0ff';
@@ -1822,6 +1911,13 @@ class Cazador {
       if (this.apuntando > 0) {
         this.apuntando -= dt;
         if (this.apuntando <= 0) {
+          // El sacerdote lanza un frasco de agua bendita adonde estás (deja un charco que quema)
+          if (this.tipo === 'sacerdote') {
+            frascos.push({ x0: this.pos.x, y0: this.pos.y - 10, x1: objetivo.x, y1: objetivo.y, t: 0, dur: 0.8 });
+            Sonido.lanzarEstaca();
+            this.tTiro = azar(tiro.espera[0], tiro.espera[1]);
+            return;
+          }
           // El jefe lanza tres estacas en abanico; los demás, una
           const angulos = this.tipo === 'jefe' ? [-0.25, 0, 0.25] : [0];
           const base = Math.atan2(this.mira.y, this.mira.x);
@@ -1845,8 +1941,8 @@ class Cazador {
     const { x } = this.pos;
     const y = this.pos.y + Math.abs(Math.sin(this.paso)) * -2;
     // Colores según el tipo: abrigo y cinta del sombrero
-    const abrigo = { normal: '#3d2a1c', ballestero: '#2c3a26', jefe: '#3a1238' }[this.tipo];
-    const cinta = { normal: '#7a1414', ballestero: '#4f8a3c', jefe: '#d4a63a' }[this.tipo];
+    const abrigo = { normal: '#3d2a1c', ballestero: '#2c3a26', jefe: '#3a1238', sacerdote: '#17171f' }[this.tipo];
+    const cinta = { normal: '#7a1414', ballestero: '#4f8a3c', jefe: '#d4a63a', sacerdote: '#e8e8f0' }[this.tipo];
     ctx.save();
     if (this.tipo === 'jefe') {          // el jefe se dibuja más grande
       ctx.translate(x, this.pos.y); ctx.scale(1.55, 1.55); ctx.translate(-x, -this.pos.y);
@@ -1861,7 +1957,9 @@ class Cazador {
     }
     // Estaca de madera apuntando al objetivo (echada hacia atrás mientras apunta)
     const recarga = this.lanzaEstacas && this.tTiro > 2.2;   // recién lanzó: mano vacía
-    if (!recarga) {
+    if (this.tipo === 'sacerdote') {     // frasco de agua bendita en la mano
+      if (!recarga) { circulo(x + this.mira.x * 16, y + 6 + this.mira.y * 16, 5, '#6fc8ff'); circulo(x + this.mira.x * 16 - 1, y + 4 + this.mira.y * 16, 1.5, '#e8f8ff'); }
+    } else if (!recarga) {
       const atras = this.apuntando > 0 ? -10 : 0;
       ctx.strokeStyle = '#a07040'; ctx.lineWidth = 4; ctx.lineCap = 'round';
       ctx.beginPath();
@@ -1882,6 +1980,7 @@ class Cazador {
     ctx.beginPath(); ctx.ellipse(x, y - 13, 17, 5, 0, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.roundRect(x - 8, y - 24, 16, 12, 3); ctx.fill();
     ctx.fillStyle = cinta; ctx.fillRect(x - 8, y - 16, 16, 3);   // cinta del sombrero
+    if (this.tipo === 'sacerdote') { ctx.fillStyle = '#f2f2f6'; ctx.fillRect(x - 3, y - 1, 6, 4); }   // alzacuello blanco
     // Enredado en vendas (momia): tiras cruzadas sobre el cuerpo
     if (this.tEnredo > 0) {
       ctx.strokeStyle = '#e2d4ad'; ctx.lineWidth = 3;
@@ -1992,6 +2091,7 @@ function convertirSiervo() {
   if (!elegido) return avisar('Acércate a un aldeano');
   aldeanos = aldeanos.filter((a) => a !== elegido);
   siervos.push(new Siervo(elegido));
+  avanzarMision('siervos', 1);
   vampiro.sangre -= COSTO_SIERVO;
   esperaSiervo = SIERVO_ESPERA;
   Sonido.siervo();
@@ -2052,6 +2152,45 @@ function actualizarEstacas(dt) {
     return true;
   });
 }
+// ---- Agua bendita: frascos que vuelan en arco y charcos que queman --------
+let frascos = [], charcos = [];
+let tAvisoAgua = 0;                      // para no repetir el aviso a cada rato
+function actualizarAguaBendita(dt) {
+  frascos = frascos.filter((f) => {
+    f.t += dt;
+    if (f.t < f.dur) return true;
+    charcos.push({ x: f.x1, y: f.y1, vida: 3.5 });   // se rompe y deja un charco
+    salpicar(f.x1, f.y1, '#9fdcff', 14, 120);
+    Sonido.impactoEstaca();
+    return false;
+  });
+  tAvisoAgua = Math.max(0, tAvisoAgua - dt);
+  charcos = charcos.filter((c) => {
+    c.vida -= dt;
+    // Quema al vampiro mientras esté dentro (en murciélago vuela por encima)
+    if (!vampiro.esMurcielago && Math.hypot((vampiro.pos.x - c.x) / 44, (vampiro.pos.y - c.y) / 26) < 1) {
+      vampiro.sangre -= 14 * factorAtaque() * factorDano() * dt;
+      if (tAvisoAgua <= 0) { tAvisoAgua = 1.2; textoFlotante(vampiro.pos.x, vampiro.pos.y - 30, '¡Agua bendita!', '#9fdcff'); salpicar(vampiro.pos.x, vampiro.pos.y, '#e8f8ff', 6, 60); }
+    }
+    return c.vida > 0;
+  });
+}
+function dibujarAguaBendita(t) {
+  for (const c of charcos) {             // charco azul que brilla y se seca
+    ctx.globalAlpha = Math.min(1, c.vida / 0.8) * 0.75;
+    ctx.fillStyle = '#4aa8e0'; ctx.beginPath(); ctx.ellipse(c.x, c.y, 44, 26, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#bfe9ff'; ctx.beginPath(); ctx.ellipse(c.x - 10, c.y - 6, 14, 5, 0, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 3; i++) circulo(c.x + Math.sin(t * 3 + i * 2) * 28, c.y + Math.cos(t * 2 + i) * 12, 1.8, '#ffffff');
+    ctx.globalAlpha = 1;
+  }
+  for (const f of frascos) {             // frasco en el aire (parábola)
+    const k = f.t / f.dur;
+    const x = f.x0 + (f.x1 - f.x0) * k, y = f.y0 + (f.y1 - f.y0) * k - Math.sin(k * Math.PI) * 70;
+    circulo(x, y, 6, '#6fc8ff'); circulo(x - 1.5, y - 2, 2, '#e8f8ff');
+    ctx.fillStyle = '#7a5a3a'; ctx.fillRect(x - 2, y - 10, 4, 4);
+  }
+}
+
 function dibujarEstacas() {
   for (const e of estacas) {
     const ang = Math.atan2(e.vy, e.vx);
@@ -2255,6 +2394,7 @@ function empezarNoche() {
   cazadores = [];
   particulas = []; textos = []; ondas = [];
   estacas = []; enjambre = []; tEnjambreActivo = 0;
+  frascos = []; charcos = [];
   siervos = []; esperaSiervo = 0; jefeSalio = false;
   esperaHipnosis = 0; esperaEnjambre = 0;   // poderes listos al empezar la noche
   esperaHielo = 0; tHielo = 0;
@@ -2352,6 +2492,7 @@ function lanzarNiebla() {
   Sonido.niebla();
   ondas.push({ x: vampiro.pos.x, y: vampiro.pos.y, r: 10, max: RADIO_NIEBLA });
   estacas = estacas.filter((e) => largo(resta(e, vampiro.pos)) >= RADIO_NIEBLA);
+  charcos = charcos.filter((c) => largo(resta(c, vampiro.pos)) >= RADIO_NIEBLA);
   cazadores = cazadores.filter((c) => {
     if (largo(resta(c.pos, vampiro.pos)) < RADIO_NIEBLA) return golpearCazador(c, 2) !== 2;
     return true;
@@ -2371,6 +2512,7 @@ function terminarNoche() {
   if (victoria) ganarMonedas(200);       // premio por ganar el juego
   // Resultados: puntos de esta noche, totales y récord
   // Puntos del ranking: los de esta noche se suman a la partida y se guardan los récords
+  avanzarMision('noche', noche);
   const pn = puntosDeLaNoche();
   puntosRun = Math.min(MAX_PUNTOS_TOTAL, puntosRun + pn + (victoria ? 500 : 0));
   const rm = progreso.rank.mejores;
@@ -2378,6 +2520,7 @@ function terminarNoche() {
   rm['n' + noche] = Math.max(rm['n' + noche], pn);
   rm.total = Math.max(rm.total, puntosRun);
   mejor = rm.total;
+  for (const k of ['hoy', 'semana']) { const per = puntosPeriodo(k); per.pts = Math.max(per.pts, puntosRun); }
   progreso.rank.pendiente = true;        // hay récords por subir (se suben al terminar esta función)
   // Guardado: si cierras el juego en los resultados, sigues en la noche siguiente
   // (y como la partida ya apunta a la siguiente noche, esta no se vuelve a cobrar)
@@ -2410,6 +2553,7 @@ function empezarEscenaAtaud() {
   // Las estacas en el aire caen y el enjambre se va
   estacas.forEach((e) => salpicar(e.x, e.y, '#a07040', 4, 50));
   estacas = []; enjambre = []; tEnjambreActivo = 0; avisoCombo = null;
+  frascos = []; charcos = [];
   siervos.forEach((sv) => salpicar(sv.pos.x, sv.pos.y, '#9a9a9a', 16, 120));   // el sol convierte a los siervos en polvo
   siervos = [];
   tHielo = 0;
@@ -2767,6 +2911,8 @@ function eliminarCazador(c) {
   if (combo >= 2) bonoComboNoche += 5 * (combo - 1);   // bono de combo para los puntos del ranking
   if (c.tipo === 'jefe') jefeVencidoNoche = true;
   mejorCombo = Math.max(mejorCombo, combo);
+  avanzarMision('cazadores', 1);
+  if (combo >= 2) avanzarMision('combo', combo);
   const ganancia = MONEDAS_CAZADOR + (combo - 1) * 2;
   ganarMonedas(ganancia, c.pos.x, c.pos.y);
   if (combo >= 2 && c.tipo !== 'jefe') {
@@ -2790,7 +2936,8 @@ function actualizar(dt) {
   tSpawn -= dt;
   if (tSpawn <= 0) {
     if (cazadores.length < maxCazadores(noche)) {
-      const tipo = Math.random() < probBallestero(noche) ? 'ballestero' : 'normal';
+      const r = Math.random();
+      const tipo = r < probSacerdote(noche) ? 'sacerdote' : r < probSacerdote(noche) + probBallestero(noche) ? 'ballestero' : 'normal';
       cazadores.push(new Cazador(velCazador(noche, tiempoNoche), tipo));
       Sonido.cazadorAparece();
     }
@@ -2812,6 +2959,7 @@ function actualizar(dt) {
   }
   actualizarSiervos(dt);                 // tus siervos no se congelan
   if (tHielo <= 0) actualizarEstacas(dt);
+  if (tHielo <= 0) actualizarAguaBendita(dt);
   actualizarEnjambre(dt, tiempoTotal);
   esperaHipnosis = Math.max(0, esperaHipnosis - dt);
   esperaEnjambre = Math.max(0, esperaEnjambre - dt);
@@ -2821,14 +2969,25 @@ function actualizar(dt) {
   // Mordidas: dan sangre y cargan la niebla
   aldeanos = aldeanos.filter((a) => {
     if (largo(resta(a.pos, vampiro.pos)) < Aldeano.RADIO + Vampiro.RADIO) {
-      vampiro.sangre = Math.min(SANGRE_MAX, vampiro.sangre + sangrePorMordida());
+      // El guardia se defiende mientras tenga energía (hay que cansarlo o ir en murciélago)
+      if (a.tipo === 'guardia' && a.energia > 0 && !vampiro.esMurcielago && tHielo <= 0) {
+        if (vampiro.recibirGolpe(10 * factorAtaque())) {
+          textoFlotante(a.pos.x, a.pos.y - 30, '¡El guardia se defiende!', '#ffcf6b');
+          const n = normal(resta(a.pos, vampiro.pos)); a.pos.x += n.x * 40; a.pos.y += n.y * 40;
+        }
+        return true;
+      }
+      const sangreGanada = Math.max(5, sangrePorMordida() + a.bonus);
+      vampiro.sangre = Math.min(SANGRE_MAX, vampiro.sangre + sangreGanada);
       mordidas++;
+      avanzarMision('mordidas', 1);
+      if (a.tipo === 'guardia') avanzarMision('guardias', 1);
       ganarMonedas(MONEDAS_MORDIDA, a.pos.x, a.pos.y);
       if (tiene('niebla') && cargaNiebla === mordidasNiebla() - 1) Sonido.nieblaLista();   // se acaba de cargar
       cargaNiebla = Math.min(mordidasNiebla(), cargaNiebla + 1);
       Sonido.mordida();
       salpicar(a.pos.x, a.pos.y, '#c8142a', 20);
-      textoFlotante(a.pos.x, a.pos.y - 20, `+${sangrePorMordida()} sangre`, '#ff6b7d');
+      textoFlotante(a.pos.x, a.pos.y - 20, `+${sangreGanada} sangre`, '#ff6b7d');
       return false;
     }
     return true;
@@ -3028,7 +3187,7 @@ function luzAmanecer() {
 function leyenda(y) {
   const items = [
     ['Tú', () => { const v = new Vampiro(); v.pos = { x: 0, y: 0 }; return v; }],
-    ['Aldeano\nmuérdelo', () => { const a = new Aldeano(); a.pos = { x: 0, y: 0 }; a.ropa = '#3f6fc4'; return a; }],
+    ['Aldeano\nmuérdelo', () => { const a = new Aldeano('normal'); a.pos = { x: 0, y: 0 }; a.ropa = '#3f6fc4'; return a; }],
     ['Cazador\nevítalo o elimínalo', () => { const c = new Cazador(0); c.pos = { x: 0, y: 0 }; c.mira = { x: 1, y: 0 }; return c; }],
   ];
   items.forEach(([nombre, crear], i) => {
@@ -3072,6 +3231,7 @@ function dibujar(t) {
   todos.forEach((e) => e.dibujar(t));
   if (tHielo > 0 && estado !== 'amanecer') dibujarHielo();
   if (estado === 'amanecer') (victoria ? dibujarInvasion : dibujarAtaud)(t);
+  dibujarAguaBendita(t);
   dibujarEstacas();
   dibujarEnjambre(t);
   dibujarEfectos();
@@ -3188,6 +3348,14 @@ function pintarTienda() {
   // Desde los resultados, cerrar la tienda lleva a la ruleta de la siguiente noche
   document.getElementById('cerrar-tienda').textContent =
     estado === 'amanecer' && !victoria ? `Ir a la noche ${noche + 1}` : 'Volver al juego';
+  // Misiones con su barra de progreso
+  document.getElementById('lista-misiones').innerHTML = progreso.misiones.map((m) => {
+    const f = Math.min(1, m.prog / m.meta);
+    return `<div class="articulo" style="--c:#7fd69d"><b>${TIPOS_MISION[m.t].texto(m.meta)}</b>
+      <p>${Math.min(m.prog, m.meta)} de ${m.meta}</p>
+      <span class="niveles" style="display:block;height:6px;border-radius:3px;background:#2f2944;overflow:hidden"><i style="display:block;height:100%;width:${f * 100}%;background:#7fd69d;border-radius:3px"></i></span>
+      <button type="button" class="hecho" disabled>${botonPrecio(m.premio)}</button></div>`;
+  }).join('');
   // Personajes: comprar, elegir o "elegido"
   const enCurso = hayPartidaGuardada() || ['amanecer', 'ruleta', 'jugando', 'pausa'].includes(estado);
   document.getElementById('nota-personajes').textContent = enCurso
@@ -3375,7 +3543,7 @@ const Ranking = {
       for (const k of CLAVES_RANK) { r.mejores[k] = Math.max(r.mejores[k], (srv && srv[k]) || 0); datos[k] = r.mejores[k]; }
       mejor = r.mejores.total;
       const igual = srv && srv.nombre === datos.nombre && srv.personaje === datos.personaje && CLAVES_RANK.every((k) => srv[k] === datos[k]);
-      if (igual) { r.pendiente = false; guardarProgreso(); return; }
+      if (igual) { await this.sincronizarPeriodos(datos); r.pendiente = false; guardarProgreso(); return; }
       const lote = writeBatch(this.db);
       if (!srv || srv.nombreMin !== datos.nombreMin) {
         // Reservar el nombre (si ya es de otro jugador, hay que elegir otro)
@@ -3393,6 +3561,7 @@ const Ranking = {
       const cambianPuntos = !srv || CLAVES_RANK.some((k) => srv[k] !== datos[k]);
       lote.set(ref, { ...datos, actualizado: serverTimestamp(), ultimoPuntaje: cambianPuntos ? serverTimestamp() : srv.ultimoPuntaje });
       await lote.commit();
+      await this.sincronizarPeriodos(datos);
       r.pendiente = false; r.nombreOcupado = false;
       this.cache = {}; this.mensaje = '';
       guardarProgreso();
@@ -3408,13 +3577,36 @@ const Ranking = {
     }
   },
 
-  // Lee el top 20 de una tabla ('total' o 'n1'…'n10'); se guarda 5 minutos para ahorrar lecturas
+  // Sube la mejor partida de hoy y de la semana (solo si es mayor que la del servidor).
+  // Va aparte: si falla (por ejemplo, reglas viejas), el ranking de siempre sigue funcionando.
+  async sincronizarPeriodos(datos) {
+    const { doc, getDoc, setDoc, serverTimestamp } = this.sdk;
+    for (const [clave, coleccion] of [['hoy', 'dias'], ['semana', 'semanas']]) {
+      const per = puntosPeriodo(clave);
+      if (per.pts <= 0) continue;
+      try {
+        const ref = doc(this.db, coleccion, String(per.id), 'jugadores', this.uid);
+        const srv = await getDoc(ref).then((d) => (d.exists() ? d.data() : null));
+        if (srv && srv.pts >= per.pts && srv.nombre === datos.nombre) continue;
+        await setDoc(ref, { nombre: datos.nombre, nombreMin: datos.nombreMin, personaje: datos.personaje,
+          pts: Math.max(per.pts, (srv && srv.pts) || 0), actualizado: serverTimestamp() });
+      } catch (_) { /* sin reglas nuevas o sin conexión: se intenta en la próxima noche */ }
+    }
+  },
+
+  // Lee el top 20 de una tabla ('hoy', 'semana', 'total' o 'n1'…'n10'); se guarda 5 minutos para ahorrar lecturas
   async leerTabla(clave) {
     const c = this.cache[clave];
     if (c && Date.now() - c.t < 5 * 60 * 1000) return c.filas;
     const { collection, query, where, orderBy, limit, getDocs } = this.sdk;
-    const res = await getDocs(query(collection(this.db, 'jugadores'), where(clave, '>', 0), orderBy(clave, 'desc'), limit(20)));
-    const filas = res.docs.map((d) => ({ id: d.id, ...d.data() }));
+    let res;
+    if (clave === 'hoy' || clave === 'semana') {
+      const id = String(clave === 'hoy' ? diaActual() : semanaActual());
+      res = await getDocs(query(collection(this.db, clave === 'hoy' ? 'dias' : 'semanas', id, 'jugadores'), orderBy('pts', 'desc'), limit(20)));
+    } else {
+      res = await getDocs(query(collection(this.db, 'jugadores'), where(clave, '>', 0), orderBy(clave, 'desc'), limit(20)));
+    }
+    const filas = res.docs.map((d) => ({ id: d.id, ...d.data(), valor: d.data().pts !== undefined ? d.data().pts : d.data()[clave] }));
     this.cache[clave] = { t: Date.now(), filas };
     return filas;
   },
@@ -3429,7 +3621,7 @@ const Ranking = {
 };
 
 // ---- Panel del ranking ----
-let tablaRank = 'total';                 // pestaña elegida
+let tablaRank = 'hoy';                   // pestaña elegida (empieza en "Hoy")
 let editandoNombre = false;
 function pintarRanking(recargarTabla = true) {
   if (rankingEl.hidden) return;
@@ -3456,16 +3648,21 @@ function pintarRanking(recargarTabla = true) {
   // Pestañas: General y las 10 noches
   // Pestañas: "General" a lo ancho y debajo las noches 1 a 10 (dos filas de 5)
   document.getElementById('pestanas-rank').innerHTML =
-    `<button type="button" class="general" data-tabla="total" aria-pressed="${tablaRank === 'total'}">General (mejores partidas)</button>` +
+    `<div class="periodos">` +
+    [['hoy', 'Hoy'], ['semana', 'Esta semana'], ['total', 'De siempre']].map(([k, t]) =>
+      `<button type="button" data-tabla="${k}" aria-pressed="${tablaRank === k}">${t}</button>`).join('') + `</div>` +
     `<span class="rotulo">Por noche</span>` +
     CLAVES_RANK.slice(1).map((k) =>
       `<button type="button" data-tabla="${k}" aria-pressed="${k === tablaRank}" aria-label="Noche ${k.slice(1)}">${k.slice(1)}</button>`).join('');
   // Título de la tabla que se está viendo
-  document.getElementById('titulo-tabla').textContent = tablaRank === 'total'
-    ? 'Mejores partidas' : `Mejores de la noche ${tablaRank.slice(1)}: ${ESCENARIOS[Number(tablaRank.slice(1)) - 1].nombre}`;
+  document.getElementById('titulo-tabla').textContent = tablaRank === 'hoy' ? 'Mejores partidas de hoy'
+    : tablaRank === 'semana' ? 'Mejores partidas de esta semana'
+    : tablaRank === 'total' ? 'Mejores partidas de siempre'
+    : `Mejores de la noche ${tablaRank.slice(1)}: ${ESCENARIOS[Number(tablaRank.slice(1)) - 1].nombre}`;
   // Mis récords (siempre disponibles, aunque no haya internet)
-  document.getElementById('mis-records').innerHTML = CLAVES_RANK.map((k) =>
-    `<div>${k === 'total' ? 'Mejor partida' : 'Noche ' + k.slice(1)}<b>${r.mejores[k] || '—'}</b></div>`).join('');
+  document.getElementById('mis-records').innerHTML =
+    `<div>Hoy<b>${puntosPeriodo('hoy').pts || '—'}</b></div><div>Esta semana<b>${puntosPeriodo('semana').pts || '—'}</b></div>` +
+    CLAVES_RANK.map((k) => `<div>${k === 'total' ? 'De siempre' : 'Noche ' + k.slice(1)}<b>${r.mejores[k] || '—'}</b></div>`).join('');
   if (recargarTabla) pintarTabla();
 }
 async function pintarTabla() {
@@ -3486,7 +3683,7 @@ async function pintarTabla() {
       div.className = 'fila-rank' + (f.id === Ranking.uid ? ' mia' : '');
       div.innerHTML = `<span class="pos">${i + 1}</span><canvas></canvas><span class="nom"></span><span class="pts"></span>`;
       div.querySelector('.nom').textContent = f.nombre;   // nombres de otros: siempre como texto
-      div.querySelector('.pts').textContent = f[clave];
+      div.querySelector('.pts').textContent = f.valor;
       dibujarRetrato(div.querySelector('canvas'), PERSONAJES.some((p) => p.id === f.personaje) ? f.personaje : 'vampiro', 30);
       caja.appendChild(div);
     });

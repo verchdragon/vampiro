@@ -18,6 +18,40 @@ service cloud.firestore {
       allow update: if false;
     }
 
+    // ---- Ranking de hoy y de la semana ----------------------------------------
+    // dias/{número de día}/jugadores/{uid} y semanas/{número de semana}/jugadores/{uid}
+    // Cada jugador solo escribe el suyo, sus puntos no bajan y no pueden pasar
+    // de su mejor partida de siempre (que ya revisan las reglas de "jugadores").
+    function periodoValido(uid) {
+      let d = request.resource.data;
+      return request.auth != null && request.auth.uid == uid
+        && d.keys().hasOnly(['nombre', 'nombreMin', 'personaje', 'pts', 'actualizado'])
+        && d.keys().hasAll(['nombre', 'nombreMin', 'personaje', 'pts', 'actualizado'])
+        && d.nombre is string && d.nombre.size() >= 3 && d.nombre.size() <= 16
+        && d.nombreMin is string && d.nombreMin.matches('^[a-z0-9_-]{3,16}$')
+        && get(/databases/$(database)/documents/nombres/$(d.nombreMin)).data.uid == uid
+        && d.personaje in ['vampiro', 'momia', 'bruja', 'lobo']
+        && d.actualizado == request.time
+        && d.pts is int && d.pts > 0
+        && d.pts <= get(/databases/$(database)/documents/jugadores/$(uid)).data.total
+        && (resource == null || d.pts >= resource.data.pts);
+    }
+    // Día y semana actuales (se acepta uno de diferencia por las zonas horarias)
+    function hoy() { return math.floor(request.time.toMillis() / 86400000.0); }
+    function cercano(id, actual) {
+      return id.matches('^[0-9]{4,6}$') && int(id) >= actual - 1 && int(id) <= actual + 1;
+    }
+    match /dias/{dia}/jugadores/{uid} {
+      allow read: if true;
+      allow create, update: if cercano(dia, hoy()) && periodoValido(uid);
+      allow delete: if false;
+    }
+    match /semanas/{semana}/jugadores/{uid} {
+      allow read: if true;
+      allow create, update: if cercano(semana, math.floor((hoy() + 3) / 7.0)) && periodoValido(uid);
+      allow delete: if false;
+    }
+
     // ---- Jugadores: un documento por celular (id anónimo) ------------------
     match /jugadores/{uid} {
       allow read: if true;
