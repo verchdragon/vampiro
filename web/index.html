@@ -588,7 +588,7 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
-const VERSION = '26 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
+const VERSION = '27 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
 const ANCHO = 540;                       // ancho lógico del mundo
 let ALTO = 960;                          // alto lógico: se ajusta a la forma de la pantalla (900 a 1200)
 const SANGRE_MAX = 100;
@@ -802,6 +802,8 @@ const Sonido = {
   tLatido: 0,                            // cuenta regresiva del latido
   bufs: {},                              // sonidos grabados ya decodificados (nombre → búfer)
   pista: null,                           // música grabada sonando: { nombre, fuente }
+  pedidos: {},                           // músicas que ya se empezaron a descargar
+  proxTambor: 0,                         // siguiente golpe del tambor de guerra (noche 10)
 
   iniciar() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
@@ -826,6 +828,20 @@ const Sonido = {
     for (let i = 0; i < datos.length; i++) datos[i] = Math.random() * 2 - 1;
     // Canal aparte para la música grabada (sin el eco del clavecín)
     this.musicaReal = c.createGain(); this.musicaReal.gain.value = 0; this.musicaReal.connect(this.maestro);
+    // Capa "monstruo" de la noche 10: órgano grave (La + Mi) que respira lento.
+    // Los osciladores siempre corren; solo se sube su volumen en la noche final.
+    this.monstruo = c.createGain(); this.monstruo.gain.value = 0; this.monstruo.connect(this.maestro);
+    const graves = c.createBiquadFilter(); graves.type = 'lowpass'; graves.frequency.value = 380;
+    const respira = c.createGain(); respira.gain.value = 0.7;
+    graves.connect(respira); respira.connect(this.monstruo);
+    [55, 82.4, 110].forEach((fr, i) => {
+      const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr;
+      o.detune.value = i * 6;                // un poco desafinado: suena más siniestro
+      o.connect(graves); o.start();
+    });
+    const lfo = c.createOscillator(), prof = c.createGain();   // vaivén lento del volumen
+    lfo.frequency.value = 0.18; prof.gain.value = 0.3;
+    lfo.connect(prof); prof.connect(respira.gain); lfo.start();
     this.proximo = c.currentTime + 0.1;
     this.cargarArchivos();
     setInterval(() => this.programarMusica(), 25);   // programador con margen
@@ -838,9 +854,10 @@ const Sonido = {
     pintarBotonSonido();
   },
 
-  // Lista de archivos grabados. Primero los efectos (pesan poco) y al final la música.
+  // Efectos grabados (pesan poco, se bajan al inicio). La música va aparte: noche1…noche10
+  // y jefe, y se descarga solo cuando se necesita (pedirMusica).
   ARCHIVOS: ['mordida', 'golpe', 'murcielago', 'eliminar', 'lanzar', 'estaca', 'hielo', 'ataud-abre',
-    'ataud-cierra', 'moneda', 'compra', 'poder', 'campana', 'amanecer', 'victoria', 'derrota', 'noche', 'jefe'],
+    'ataud-cierra', 'moneda', 'compra', 'poder', 'campana', 'amanecer', 'victoria', 'derrota'],
 
   // Descarga y decodifica cada archivo; los que fallen se quedan con el sonido sintetizado
   async cargarArchivos() {
@@ -853,6 +870,18 @@ const Sonido = {
         this.bufs[n] = await new Promise((ok, mal) => this.ctx.decodeAudioData(datos, ok, mal));
       } catch (_) { /* sin ese archivo: se usa el sintetizado */ }
     }
+  },
+
+  // Descarga una música la primera vez que se pide; mientras llega, sigue la anterior
+  async pedirMusica(n) {
+    if (this.pedidos[n]) return;
+    this.pedidos[n] = true;
+    try {
+      const r = await fetch('sonidos/' + n + '.mp3');
+      if (!r.ok) return;
+      const datos = await r.arrayBuffer();
+      this.bufs[n] = await new Promise((ok, mal) => this.ctx.decodeAudioData(datos, ok, mal));
+    } catch (_) { /* sin esa música: queda la anterior o el arpegio sintetizado */ }
   },
 
   // Toca un sonido grabado. Devuelve false si no está cargado (para usar el sintetizado).
@@ -1033,12 +1062,25 @@ const Sonido = {
     // En los menús la música baja de volumen; en partida suena completa
     const objetivo = estado === 'jugando' ? 0.3 : 0.1;
     // ¿Hay música grabada? En la pelea con el jefe cambia a su pista
+    // Cada noche tiene su propia música; con el jefe cambia a la suya
+    const n = Math.max(1, Math.min(NOCHE_FINAL, noche || 1));
     const hayJefe = estado === 'jugando' && cazadores.some((z) => z.tipo === 'jefe');
-    const quiero = hayJefe && this.bufs.jefe ? 'jefe' : (this.bufs.noche ? 'noche' : null);
-    if (quiero) {
-      if (!this.pista || this.pista.nombre !== quiero) this.cambiarPista(quiero);
-      // Un poquito más rápida cada noche (máx. +10 %)
-      this.pista.fuente.playbackRate.setTargetAtTime(1 + Math.min(7, (noche || 1) - 1) * 0.015, c.currentTime, 0.5);
+    const quiero = hayJefe ? 'jefe' : 'noche' + n;
+    this.pedirMusica(quiero);
+    this.pedirMusica(n < NOCHE_FINAL ? 'noche' + (n + 1) : 'jefe');   // adelanta la siguiente
+    // Si la que quiero aún no llega, sigue sonando la anterior
+    const usar = this.bufs[quiero] ? quiero : (this.pista ? this.pista.nombre : null);
+    // Noche 10: somos los monstruos → órgano grave y tambor de guerra encima de la música
+    const final = n === NOCHE_FINAL && estado === 'jugando';
+    this.monstruo.gain.setTargetAtTime(final ? 0.14 : 0, c.currentTime, 0.8);
+    if (final && c.currentTime >= this.proxTambor) {
+      const t = Math.max(this.proxTambor, c.currentTime) - c.currentTime;
+      this.tono(70, 0.35, { tipo: 'sine', hasta: 38, vol: 0.5, cuando: t, destino: this.musicaReal });
+      this.tono(70, 0.3, { tipo: 'sine', hasta: 40, vol: 0.35, cuando: t + 0.22, destino: this.musicaReal });
+      this.proxTambor = c.currentTime + t + 1.6;                      // "bum-bum" cada 1.6 s
+    }
+    if (usar) {
+      if (!this.pista || this.pista.nombre !== usar) this.cambiarPista(usar);
       this.musicaReal.gain.setTargetAtTime(estado === 'jugando' ? 0.55 : 0.18, c.currentTime, 0.3);
       this.musica.gain.setTargetAtTime(0, c.currentTime, 0.3);   // el arpegio se calla
       this.proximo = c.currentTime + 0.1;                         // y no acumula notas pendientes
