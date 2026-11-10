@@ -443,6 +443,19 @@ const Sonido = {
     this.tono(240, 0.12, { tipo: 'triangle', hasta: 90, vol: 0.35 });
     this.ruido(0.08, { freq: 900, tipo: 'lowpass', vol: 0.4 });
   },
+  combo(n) {                             // dos notas que suben más con cada combo
+    const base = 523 * Math.pow(2, Math.min(12, (n - 2) * 2) / 12);
+    this.tono(base, 0.12, { tipo: 'square', vol: 0.07 });
+    this.tono(base * 1.5, 0.25, { tipo: 'square', vol: 0.07, cuando: 0.08 });
+  },
+  ataudAbre() {                          // rechinido de la tapa al abrirse
+    this.tono(170, 0.6, { tipo: 'sawtooth', hasta: 260, vol: 0.05 });
+    this.ruido(0.5, { freq: 600, hasta: 1200, vol: 0.12, q: 6 });
+  },
+  ataudCierra() {                        // golpe seco de la tapa
+    this.tono(95, 0.35, { tipo: 'sine', hasta: 40, vol: 0.7 });
+    this.ruido(0.25, { freq: 350, tipo: 'lowpass', vol: 0.5 });
+  },
   moneda() {                             // tintineo de moneda
     this.tono(1568, 0.08, { tipo: 'square', vol: 0.04 });
     this.tono(2093, 0.18, { tipo: 'square', vol: 0.04, cuando: 0.07 });
@@ -638,6 +651,7 @@ function actualizarEfectos(dt) {
   for (const p of particulas) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.92; p.vy *= 0.92; p.vida -= dt; }
   particulas = particulas.filter((p) => p.vida > 0);
   for (const t of textos) { t.y -= 30 * dt; t.vida -= dt; }
+  if (avisoCombo && (avisoCombo.vida -= dt) <= 0) avisoCombo = null;
   textos = textos.filter((t) => t.vida > 0);
   for (const o of ondas) o.r += 600 * dt;
   ondas = ondas.filter((o) => o.r < o.max);
@@ -1045,9 +1059,21 @@ function texto(t, x, y, tam, color, fuente = 'cuerpo', alin = 'center') {
 let estado = 'inicio';
 let momentoPausa = 0;                    // cuándo apareció la última pantalla de pausa
 // Evita saltar la pantalla por accidente con un toque justo al cambiar
-const puedeContinuar = () => performance.now() - momentoPausa > 800;
+const puedeContinuar = () => performance.now() - momentoPausa > 800 && (estado !== 'amanecer' || tAmanecer > DURACION_ESCENA + 0.3);
 let vampiro, aldeanos, cazadores, tiempoNoche, noche, mordidas, eliminados, cargaNiebla, tSpawn, tiempoTotal;
 let monedasPartida = 0, monedasNoche = 0;  // monedas ganadas en esta partida / esta noche
+
+// Combos: eliminar cazadores seguidos (menos de VENTANA_COMBO s entre uno y otro)
+const VENTANA_COMBO = 1.5;
+let combo = 0, tCombo = 0, mejorCombo = 0;
+let avisoCombo = null;                     // { n, extra, vida } para el cartel en pantalla
+
+// Escena del amanecer: el vampiro se mete en su ataúd
+let tAmanecer = 0;                         // segundos desde que salió el sol
+let ataud = { x: 0, y: 0 };                // dónde aparece el ataúd
+let vampInicio = { x: 0, y: 0 };           // dónde estaba el vampiro al amanecer
+let sonoCierre = false, sonoFinal = false; // para que cada sonido suene una vez
+const DURACION_ESCENA = 2.8;               // después aparece el cartel de "¡Amaneció!"
 
 // Suma monedas al total guardado (se guardan al momento: no se pierden al perder)
 function ganarMonedas(n, x, y) {
@@ -1068,6 +1094,7 @@ const puntaje = () => Math.floor(tiempoTotal) + mordidas * 10 + eliminados * 15 
 
 function nuevaPartida() {
   noche = 1; mordidas = 0; eliminados = 0; cargaNiebla = 0; tiempoTotal = 0; monedasPartida = 0;
+  mejorCombo = 0;
   vampiro = new Vampiro();
   empezarNoche();
 }
@@ -1083,6 +1110,7 @@ function empezarNoche() {
   esperaHipnosis = 0; esperaEnjambre = 0;   // poderes listos al empezar la noche
   tiempoNoche = 0;
   monedasNoche = 0;
+  combo = 0; tCombo = 0; avisoCombo = null;
   tSpawn = 2.5;
   estado = 'jugando';
 }
@@ -1128,17 +1156,112 @@ function lanzarNiebla() {
     return true;
   });
 }
+// ---- Escena del amanecer: el ataúd ----------------------------------------
+function empezarEscenaAtaud() {
+  tAmanecer = 0; sonoCierre = false; sonoFinal = false;
+  vampInicio = { ...vampiro.pos };
+  vampiro.tInv = 0; vampiro.tMurc = 0;
+  // El ataúd sale del suelo a un lado del vampiro (hacia el centro de la pantalla)
+  const lado = vampiro.pos.x > ANCHO / 2 ? -70 : 70;
+  ataud = { x: Math.max(40, Math.min(ANCHO - 40, vampiro.pos.x + lado)), y: Math.max(170, Math.min(ALTO - 70, vampiro.pos.y)) };
+  // Las estacas en el aire caen y el enjambre se va
+  estacas.forEach((e) => salpicar(e.x, e.y, '#a07040', 4, 50));
+  estacas = []; enjambre = []; tEnjambreActivo = 0; avisoCombo = null;
+  salpicar(ataud.x, ataud.y + 30, '#5a4636', 18, 120);   // tierra al salir el ataúd
+  Sonido.ataudAbre();
+}
+const suave = (k) => k * k * (3 - 2 * k);                  // aceleración suave (0..1)
+const tramo = (t, a, b) => Math.max(0, Math.min(1, (t - a) / (b - a)));   // progreso de t entre a y b
+
+function animarAmanecer(dt) {
+  tAmanecer += dt;
+  // El vampiro camina hasta el ataúd (0.7 s → 1.5 s)
+  const k = suave(tramo(tAmanecer, 0.7, 1.5));
+  vampiro.pos = { x: vampInicio.x + (ataud.x - vampInicio.x) * k, y: vampInicio.y + (ataud.y - vampInicio.y) * k };
+  if (k > 0 && k < 1) {
+    vampiro.paso += dt * 10;
+    const d = resta(ataud, vampInicio);
+    if (largo(d) > 1) vampiro.dir = normal(d);
+  }
+  if (tAmanecer > 2.1 && !sonoCierre) { sonoCierre = true; Sonido.ataudCierra(); salpicar(ataud.x, ataud.y, '#5a4636', 12, 90); }
+  if (tAmanecer > DURACION_ESCENA && !sonoFinal) { sonoFinal = true; Sonido.amanecer(); }
+}
+
+// Dibuja el ataúd (forma clásica de seis lados) con el vampiro según la escena
+function dibujarAtaud(t) {
+  const A = tAmanecer;
+  const sube = suave(tramo(A, 0, 0.6));                     // sale del suelo
+  const abre = suave(tramo(A, 0.45, 0.85)) - suave(tramo(A, 1.7, 2.1));   // tapa: abre y cierra
+  const temblor = A > 2.1 && A < 2.4 ? Math.sin(A * 80) * 1.5 : 0;
+  const forma = (esc) => {                                   // contorno del ataúd
+    const p = [[-11, -43], [11, -43], [17, -22], [13, 43], [-13, 43], [-17, -22]];
+    ctx.beginPath();
+    p.forEach(([x, y], i) => (i ? ctx.lineTo(x * esc, y * esc) : ctx.moveTo(x * esc, y * esc)));
+    ctx.closePath();
+  };
+  ctx.save();
+  ctx.translate(ataud.x + temblor, ataud.y + (1 - sube) * 25);
+  ctx.scale(1.35, 1.35);                                     // un poco más grande que los personajes
+  ctx.globalAlpha = sube;
+  sombra(0, 46, 22, 6);
+  // Caja de madera y su interior de satén rojo
+  ctx.fillStyle = '#2a1a10'; forma(1); ctx.fill();
+  ctx.fillStyle = '#7a0c1c'; forma(0.8); ctx.fill();
+  ctx.fillStyle = '#e9d9dd'; ctx.beginPath(); ctx.ellipse(0, -27, 9, 5, 0, 0, Math.PI * 2); ctx.fill();   // almohada
+  // El vampiro ya acostado (desde 1.5 s): cabeza, capa y manos cruzadas
+  if (A >= 1.5) {
+    ctx.fillStyle = '#16121e'; ctx.beginPath(); ctx.ellipse(0, 8, 10, 24, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#a3001c'; tri(-10, -14, -3, -10, -9, 0); tri(10, -14, 3, -10, 9, 0);   // cuello de la capa
+    circulo(0, -24, 8, '#e9e4ef');
+    ctx.fillStyle = '#120d18'; ctx.beginPath(); ctx.arc(0, -25, 8, Math.PI, 0); ctx.fill();   // pelo
+    ctx.strokeStyle = '#120d18'; ctx.lineWidth = 1.2;                                         // ojos cerrados
+    ctx.beginPath(); ctx.moveTo(-5, -22); ctx.lineTo(-2, -22); ctx.moveTo(2, -22); ctx.lineTo(5, -22); ctx.stroke();
+    circulo(-3, 2, 2.5, '#e9e4ef'); circulo(3, 2, 2.5, '#e9e4ef');                             // manos cruzadas
+  }
+  // Tapa: se desliza hacia un lado al abrir y vuelve al cerrar
+  ctx.save();
+  ctx.translate(abre * 40, abre * -6);
+  ctx.rotate(abre * 0.25);
+  ctx.fillStyle = '#3a2416'; forma(1); ctx.fill();
+  ctx.strokeStyle = '#1c110a'; ctx.lineWidth = 2; forma(1); ctx.stroke();
+  ctx.strokeStyle = '#c9a25a'; ctx.lineWidth = 3;          // cruz dorada
+  ctx.beginPath(); ctx.moveTo(0, -30); ctx.lineTo(0, 10); ctx.moveTo(-8, -18); ctx.lineTo(8, -18); ctx.stroke();
+  ctx.restore();
+  ctx.restore();
+  // Antes de acostarse, el vampiro camina de pie hacia el ataúd
+  if (A < 1.5) vampiro.dibujar(t);
+  // Zzz flotando cuando ya está dormido
+  if (A > 2.3) {
+    for (let i = 0; i < 3; i++) {
+      const f = ((A - 2.3) * 0.6 + i / 3) % 1;
+      ctx.globalAlpha = 1 - f;
+      texto('z', ataud.x + 18 + f * 20, ataud.y - 40 - f * 50, 14 + f * 10, '#e8e4c9', 'display');
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
 function eliminarCazador(c) {
   eliminados++;
   Sonido.eliminar();
   salpicar(c.pos.x, c.pos.y, '#9b2fd0', 16);
   salpicar(c.pos.x, c.pos.y, '#3d2a1c', 8, 100);
   textoFlotante(c.pos.x, c.pos.y - 20, '+15', '#d9a6ff');
-  ganarMonedas(MONEDAS_CAZADOR, c.pos.x, c.pos.y);
+  // Combo: cada cazador seguido vale 2 monedas más que el anterior (3, 5, 7, 9…)
+  combo = tCombo > 0 ? combo + 1 : 1;
+  tCombo = VENTANA_COMBO;
+  mejorCombo = Math.max(mejorCombo, combo);
+  const ganancia = MONEDAS_CAZADOR + (combo - 1) * 2;
+  ganarMonedas(ganancia, c.pos.x, c.pos.y);
+  if (combo >= 2) {
+    avisoCombo = { n: combo, extra: ganancia, vida: 1.6 };
+    Sonido.combo(combo);
+  }
 }
 
 function actualizar(dt) {
   actualizarEfectos(dt);
+  if (estado === 'amanecer') { animarAmanecer(dt); return; }
   if (estado !== 'jugando') return;
   tiempoNoche += dt;
   tiempoTotal += dt;
@@ -1159,6 +1282,8 @@ function actualizar(dt) {
   actualizarEnjambre(dt, tiempoTotal);
   esperaHipnosis = Math.max(0, esperaHipnosis - dt);
   esperaEnjambre = Math.max(0, esperaEnjambre - dt);
+  tCombo = Math.max(0, tCombo - dt);      // se acaba el tiempo para seguir el combo
+  if (tCombo === 0) combo = 0;
 
   // Mordidas: dan sangre y cargan la niebla
   aldeanos = aldeanos.filter((a) => {
@@ -1204,7 +1329,7 @@ function actualizar(dt) {
   } else if (tiempoNoche >= DURACION_NOCHE) {   // ¡sobrevivió hasta el amanecer!
     estado = 'amanecer';
     momentoPausa = performance.now();
-    Sonido.amanecer();
+    empezarEscenaAtaud();
     ganarMonedas(MONEDAS_NOCHE * noche);  // premio por sobrevivir la noche
     if (puntaje() + 100 > mejor) { mejor = puntaje() + 100; guardarRecord(); }
   }
@@ -1255,6 +1380,22 @@ function dibujarJoystick() {             // anillo y pulgar del joystick virtual
   circulo(o.x + d.x / escala, o.y + d.y / escala, 18 / escala, 'rgba(200,20,42,.6)');
 }
 
+// Cartel grande de combo: "COMBO x3  +7"
+function dibujarCombo() {
+  if (!avisoCombo) return;
+  const v = avisoCombo.vida;
+  const pop = 1 + Math.max(0, (v - 1.35) / 0.25) * 0.5;      // salta al aparecer
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, v / 0.4);
+  ctx.translate(ANCHO / 2, 175);
+  ctx.scale(pop, pop);
+  const color = ['#ffcf6b', '#ffb347', '#ff8a3d', '#ff5a3d', '#ff3b8a'][Math.min(4, avisoCombo.n - 2)];
+  texto(`¡Combo x${avisoCombo.n}!`, 0, 0, 48, color, 'display');
+  dibujarMoneda(-28, 40, 9);
+  texto(`+${avisoCombo.extra}`, 8, 40, 20, '#f0be46');
+  ctx.restore();
+}
+
 // Moneda dorada dibujada en el lienzo
 function dibujarMoneda(x, y, r) {
   circulo(x, y, r, '#c9921c');
@@ -1275,7 +1416,8 @@ function velo(color = 'rgba(0,0,0,.68)') { ctx.fillStyle = color; ctx.fillRect(0
 
 // Luz de amanecer: el borde superior se tiñe de naranja en los últimos 10 s
 function luzAmanecer() {
-  const f = Math.max(0, (tiempoNoche - (DURACION_NOCHE - 10)) / 10);
+  let f = Math.max(0, (tiempoNoche - (DURACION_NOCHE - 10)) / 10);
+  if (estado === 'amanecer') f = 1 + Math.min(1, tAmanecer / DURACION_ESCENA) * 0.8;   // el sol sigue subiendo
   if (f <= 0) return;
   const g = ctx.createLinearGradient(0, 0, 0, ALTO);
   g.addColorStop(0, `rgba(255,150,60,${0.35 * f})`);
@@ -1308,8 +1450,8 @@ function dibujar(t) {
     // Cómo se ganan las monedas y para qué sirven
     texto('Gana monedas', ANCHO / 2, 420, 22, '#f0be46');
     texto('mordida +1  ·  cazador +3  ·  noche superada +10 × noche', ANCHO / 2, 448, 14, '#efe9e1');
-    texto('Se guardan aunque pierdas. Cómpralas en la Tienda:', ANCHO / 2, 472, 14, '#efe9e1');
-    texto('poderes, más velocidad y otras mejoras.', ANCHO / 2, 494, 14, '#efe9e1');
+    texto('¡Combos! Cazadores seguidos: 3, 5, 7, 9… monedas', ANCHO / 2, 472, 14, '#ffb347');
+    texto('Se guardan aunque pierdas. Gástalas en la Tienda.', ANCHO / 2, 494, 14, '#efe9e1');
     monedasCentradas(550, 24);
     texto('¡Desde la noche 3 los cazadores lanzan estacas!', ANCHO / 2, 610, 15, '#ff6b7d');
     texto(progreso.control === 'dedo' ? 'Mantén el dedo donde quieras ir' : 'Arrastra el dedo como palanca', ANCHO / 2, 640, 14, '#a9a3c2');
@@ -1318,16 +1460,20 @@ function dibujar(t) {
     return;
   }
   // Ordenar por altura para que lo de abajo tape lo de arriba
-  const todos = [...aldeanos, ...cazadores, vampiro].sort((a, b) => a.pos.y - b.pos.y);
+  // Al amanecer el vampiro lo dibuja la escena del ataúd
+  const todos = [...aldeanos, ...cazadores, ...(estado === 'amanecer' ? [] : [vampiro])].sort((a, b) => a.pos.y - b.pos.y);
   todos.forEach((e) => e.dibujar(t));
+  if (estado === 'amanecer') dibujarAtaud(t);
   dibujarEstacas();
   dibujarEnjambre(t);
   dibujarEfectos();
   luzAmanecer();
   dibujarHud();
   dibujarJoystick();
+  dibujarCombo();
 
-  if (estado === 'amanecer') {
+  if (estado === 'amanecer' && tAmanecer > DURACION_ESCENA) {
+    ctx.globalAlpha = Math.min(1, (tAmanecer - DURACION_ESCENA) / 0.4);   // el cartel aparece suave
     velo('rgba(40,15,0,.6)');
     texto('¡Amaneció!', ANCHO / 2, ALTO / 2 - 90, 84, '#ffb347', 'display');
     texto(`Sobreviviste la noche ${noche}.`, ANCHO / 2, ALTO / 2 - 10, 20, '#efe9e1');
@@ -1337,6 +1483,7 @@ function dibujar(t) {
     monedasCentradas(ALTO / 2 + 130, 20);
     if (noche + 1 === NOCHE_ESTACAS) texto('Cuidado: ahora los cazadores lanzan estacas', ANCHO / 2, ALTO / 2 + 166, 15, '#ff6b7d');
     texto(`Toca para empezar la noche ${noche + 1}`, ANCHO / 2, ALTO / 2 + 220, 30, '#e8e4c9', 'display');
+    ctx.globalAlpha = 1;
   } else if (estado === 'fin') {
     velo();
     texto('Te quedaste', ANCHO / 2, ALTO / 2 - 130, 64, '#c8142a', 'display');
@@ -1344,6 +1491,7 @@ function dibujar(t) {
     texto(`Llegaste a la noche ${noche}`, ANCHO / 2, ALTO / 2, 20, '#efe9e1');
     texto(`Puntos: ${puntaje()}   ·   Récord: ${mejor}`, ANCHO / 2, ALTO / 2 + 30, 20, '#efe9e1');
     texto(`Ganaste ${monedasPartida} monedas (se guardan)`, ANCHO / 2, ALTO / 2 + 70, 18, '#f0be46');
+    if (mejorCombo >= 2) texto(`Mejor combo: x${mejorCombo}`, ANCHO / 2, ALTO / 2 + 136, 15, '#ffb347');
     monedasCentradas(ALTO / 2 + 104, 20);
     texto('Toca para volver a intentarlo', ANCHO / 2, ALTO / 2 + 170, 30, '#e8e4c9', 'display');
   }
@@ -1363,7 +1511,7 @@ function actualizarBotones() {
   cargaEl.style.height = f * 100 + '%';
   btnNiebla.classList.toggle('listo', f >= 1);
   // Botón de la tienda: solo en los menús y con la tienda cerrada
-  btnTienda.hidden = estado === 'jugando' || !tiendaEl.hidden;
+  btnTienda.hidden = estado === 'jugando' || !tiendaEl.hidden || (estado === 'amanecer' && tAmanecer <= DURACION_ESCENA);   // no tapar la escena del ataúd
   // Hipnosis y enjambre: aparecen al desbloquearse; el relleno sube mientras se recargan
   pintarPoderDeEspera('hipnosis', hipnosisDesbloqueada(), esperaHipnosis, HIPNOSIS_ESPERA);
   pintarPoderDeEspera('enjambre', enjambreDesbloqueado(), esperaEnjambre, ENJAMBRE_ESPERA);
