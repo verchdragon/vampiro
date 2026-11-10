@@ -588,7 +588,7 @@
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
-const VERSION = '23 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
+const VERSION = '24 · 10 nov';           // se muestra en la pantalla de inicio (para saber si ya se actualizó)
 const ANCHO = 540;                       // ancho lógico del mundo
 let ALTO = 960;                          // alto lógico: se ajusta a la forma de la pantalla (900 a 1200)
 const SANGRE_MAX = 100;
@@ -1065,7 +1065,7 @@ function ajustarTamano() {
 }
 window.addEventListener('resize', ajustarTamano);
 // Evita que el navegador use los deslizamientos del dedo (salvo dentro de la tienda, que se desplaza)
-document.addEventListener('touchmove', (e) => { if (!e.target.closest('#tienda')) e.preventDefault(); }, { passive: false });
+document.addEventListener('touchmove', (e) => { if (!e.target.closest('#tienda, #ranking')) e.preventDefault(); }, { passive: false });   // la tienda y el ranking sí se desplazan
 
 // Pantalla completa (solo donde el navegador lo permite)
 const btnPantalla = document.getElementById('btn-pantalla');
