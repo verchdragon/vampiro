@@ -5,3 +5,5 @@
   mejoras, monedas guardadas, escena del ataúd, pantalla completa y partida guardada.
 
 Para restaurar: copiar el archivo a `web/index.html`.
+- `vampiro-2026-11-10-v12-antes-fase2.html`: versión 12 (ataúd central y vuelo en murciélago),
+  guardada antes de la Fase 2 (escenarios y ambientación).

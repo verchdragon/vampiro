@@ -681,7 +681,7 @@ window.addEventListener('keydown', (e) => { if (e.key.toLowerCase() === 'm') Son
 
 // ---- Lienzo y escala -----------------------------------------------------
 const lienzo = document.getElementById('lienzo');
-const ctx = lienzo.getContext('2d');
+let ctx = lienzo.getContext('2d');           // "let": se cambia un momento al dibujar el fondo guardado
 let escala = 1;                          // píxeles CSS por unidad del mundo
 
 function ajustarTamano() {
@@ -689,7 +689,10 @@ function ajustarTamano() {
   const cont = document.getElementById('escena');
   const disponibleX = cont.clientWidth;
   const disponibleY = cont.clientHeight;
+  const altoAntes = ALTO;
   ALTO = Math.round(Math.max(900, Math.min(1200, ANCHO * disponibleY / disponibleX)));
+  if (ALTO !== altoAntes && typeof noche !== 'undefined') generarDecorado();   // recolocar respetando la zona del ataúd
+  fondoCache = null;                     // volver a dibujar el fondo al nuevo tamaño
   escala = Math.min(disponibleX / ANCHO, disponibleY / ALTO);
   const dpr = window.devicePixelRatio || 1;
   lienzo.style.width = ANCHO * escala + 'px';
@@ -857,7 +860,6 @@ function dibujarEfectos() {
 }
 
 // ---- Escenario: cementerio generado una vez por partida --------------------
-let decorado = [];
 // Centro del área jugable (debajo del marcador): ahí sale siempre el ataúd
 const ALTO_HUD = 130;
 const centroAtaud = () => ({ x: ANCHO / 2, y: ALTO_HUD + (ALTO - ALTO_HUD) / 2 });
@@ -871,60 +873,509 @@ function puntoFueraDelAtaud(x0, x1, y0, y1, margen = 0) {
   }
   return { x: x0, y: y1 };               // por si acaso: una esquina
 }
+// ---- Escenarios: una ambientación distinta para cada noche -----------------
+// Un solo motor: cada noche elige su configuración (colores, piso, silueta del
+// horizonte, elementos y efectos). TODO es decoración visual, sin colisión:
+// el vampiro, los aldeanos y los cazadores nunca pueden quedar atrapados.
+const ESCENARIOS = [
+  { nombre: 'El cementerio olvidado', suelo: ['#1e2b3a', '#0a1019'], cielo: ['#0f1c30', '#05080f'], luna: '#dfe6f2', lunaR: 24,
+    silueta: 'cementerio', piso: 'tierra', niebla: '190,205,230', nieblaAlfa: 0.07,
+    elementos: { tumba: 13, cruz: 5, arbolSeco: 5, pasto: 40 } },
+  { nombre: 'Las tumbas abiertas', suelo: ['#1a2430', '#070b11'], cielo: ['#0c1626', '#030509'], luna: '#cfd8e6', lunaR: 22,
+    silueta: 'cementerio', piso: 'tierra', niebla: '160,210,210', nieblaAlfa: 0.08, inclinadas: true,
+    elementos: { tumba: 10, tumbaAbierta: 6, cruz: 4, arbolSeco: 4, pasto: 30 }, animados: { fantasmas: 5 } },
+  { nombre: 'El bosque maldito', suelo: ['#1d1828', '#08060d'], cielo: ['#1b102c', '#06030b'], luna: '#d9cfee', lunaR: 22,
+    silueta: 'bosque', piso: 'tierra', niebla: '150,80,210', nieblaAlfa: 0.11, particulas: { color: '190,140,255', n: 14 },
+    elementos: { arbolTorcido: 9, raiz: 8, piedra: 6, pasto: 25 }, animados: { ojos: 6 } },
+  { nombre: 'El bosque de las sombras', suelo: ['#121b16', '#040705'], cielo: ['#0b150f', '#020403'], luna: '#c9d4c4', lunaR: 18,
+    silueta: 'bosque', piso: 'tierra', niebla: '70,95,80', nieblaAlfa: 0.11,
+    elementos: { arbolTorcido: 11, piedra: 9, charco: 6, raiz: 6, pasto: 20 }, animados: { ojos: 5, ojosRojos: true, lucesRojas: 4 } },
+  { nombre: 'La aldea abandonada', suelo: ['#231f1c', '#0b0908'], cielo: ['#151a29', '#05060a'], luna: '#e6e0cc', lunaR: 24,
+    silueta: 'aldea', piso: 'piedra', niebla: '170,170,180', nieblaAlfa: 0.06,
+    elementos: { casa: 4, barril: 6, cerca: 5, piedra: 4, pasto: 20 }, animados: { ventanas: '255,200,110' } },
+  { nombre: 'La aldea condenada', suelo: ['#24191b', '#0b0607'], cielo: ['#220e11', '#070304'], luna: '#e8c9b8', lunaR: 22,
+    silueta: 'aldea', piso: 'piedra', niebla: '150,110,110', nieblaAlfa: 0.07, particulas: { color: '255,120,60', n: 10 }, casasRotas: true,
+    elementos: { casa: 4, barril: 4, cerca: 3, farol: 4, grieta: 9 }, animados: { ventanas: '255,110,70', humo: true } },
+  { nombre: 'El castillo oscuro', suelo: ['#25252e', '#0c0c12'], cielo: ['#121426', '#040409'], luna: '#dfe2ee', lunaR: 22,
+    silueta: 'castillo', piso: 'losas', niebla: '160,160,190', nieblaAlfa: 0.05, particulas: { color: '255,150,70', n: 10 },
+    elementos: { muro: 4, columna: 6, estatua: 3, antorcha: 6 } },
+  { nombre: 'El patio de los cazadores', suelo: ['#2b241f', '#0e0b09'], cielo: ['#1d1311', '#060404'], luna: '#e9d6c4', lunaR: 20,
+    silueta: 'castillo', piso: 'losas', niebla: '160,140,120', nieblaAlfa: 0.05, particulas: { color: '255,150,70', n: 12 },
+    elementos: { muro: 3, bandera: 5, armas: 4, antorcha: 6, barril: 3 } },
+  { nombre: 'El salón de las sombras', suelo: ['#1b1b24', '#060609'], cielo: ['#0e0f1a', '#030306'], luna: '#d4daf0', lunaR: 20,
+    silueta: 'castillo', piso: 'losas', niebla: '120,120,160', nieblaAlfa: 0.06,
+    elementos: { ventanaLuz: 4, columna: 8, vela: 10 } },
+  { nombre: 'La catedral del Inquisidor', suelo: ['#231b20', '#08050a'], cielo: ['#2c0a10', '#080204'], luna: '#e0423c', lunaR: 30,
+    silueta: 'catedral', piso: 'losas', niebla: '150,40,50', nieblaAlfa: 0.06, particulas: { color: '255,80,60', n: 12 },
+    elementos: { alfombra: 1, simbolo: 5, columnaGrande: 6, antorchaRoja: 6 } },
+];
+const escenarioActual = () => ESCENARIOS[Math.min(NOCHE_FINAL, Math.max(1, noche || 1)) - 1];
+
+// Radio aproximado de cada elemento: se usa para no encimarlos y respetar la zona del ataúd
+const TAMANO = { tumba: 16, cruz: 14, tumbaAbierta: 24, arbolSeco: 34, arbolTorcido: 40, raiz: 20, piedra: 12, charco: 26,
+  casa: 58, barril: 12, cerca: 30, farol: 10, grieta: 18, columna: 22, muro: 52, estatua: 20, antorcha: 10, bandera: 16,
+  armas: 24, vela: 6, ventanaLuz: 46, simbolo: 40, columnaGrande: 28, antorchaRoja: 10, pasto: 0 };
+// Elementos grandes que no deben encimarse entre sí
+const GRANDES = new Set(['casa', 'muro', 'arbolSeco', 'arbolTorcido', 'columna', 'columnaGrande', 'ventanaLuz', 'simbolo', 'estatua', 'charco', 'tumbaAbierta', 'armas', 'bandera']);
+
+let decorado = [];                       // elementos del escenario (todos visuales)
+let fondoCache = null;                   // lienzo auxiliar con lo que no se mueve (se dibuja una vez)
+
+// Busca un lugar libre: fuera de la zona del ataúd y sin encimarse con otro elemento grande
+function colocar(tipo) {
+  const r = TAMANO[tipo] || 10;
+  const c = centroAtaud();
+  for (let i = 0; i < 40; i++) {
+    const p = { x: azar(r + 6, ANCHO - r - 6), y: azar(ALTO_HUD + r + 10, ALTO - r - 10) };
+    if (largo(resta(p, c)) <= ZONA_LIBRE + r) continue;
+    if (GRANDES.has(tipo) && decorado.some((d) => GRANDES.has(d.tipo) && largo(resta(p, d)) < r + TAMANO[d.tipo])) continue;
+    return p;
+  }
+  return null;                           // no cupo: simplemente no se dibuja
+}
+
 function generarDecorado() {
   decorado = [];
-  for (let i = 0; i < 16; i++) decorado.push({ tipo: 'tumba', ...puntoFueraDelAtaud(30, ANCHO - 30, ALTO_HUD, ALTO - 30), g: azar(-0.15, 0.15) });
-  for (let i = 0; i < 7; i++) { const r = azar(26, 44); decorado.push({ tipo: 'arbol', ...puntoFueraDelAtaud(0, ANCHO, 0, ALTO, r), r }); }
-  for (let i = 0; i < 40; i++) decorado.push({ tipo: 'pasto', x: azar(0, ANCHO), y: azar(0, ALTO) });
-  decorado.sort((a, b) => a.y - b.y);    // dibujar de atrás hacia delante
-}
-function dibujarFondo(t) {
-  // Suelo con luz de luna en el centro
-  const g = ctx.createRadialGradient(ANCHO * 0.6, ALTO * 0.35, 40, ANCHO / 2, ALTO / 2, 620);
-  g.addColorStop(0, '#1d2a2a');
-  g.addColorStop(1, '#0a0f12');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, ANCHO, ALTO);
-  // Tierra removida al centro: el lugar del ataúd del vampiro
+  fondoCache = null;                     // el fondo se vuelve a dibujar con el nuevo escenario
+  const esc = escenarioActual();
   const c = centroAtaud();
-  ctx.fillStyle = 'rgba(60,44,32,.55)';
-  ctx.beginPath(); ctx.ellipse(c.x, c.y + 6, 44, 70, 0, 0, Math.PI * 2); ctx.fill();
-  ctx.fillStyle = 'rgba(90,66,48,.35)';
-  ctx.beginPath(); ctx.ellipse(c.x, c.y + 6, 30, 56, 0, 0, Math.PI * 2); ctx.fill();
-  // Sendero de tierra
-  ctx.strokeStyle = 'rgba(70,55,45,.45)'; ctx.lineWidth = 46; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(-20, ALTO * 0.7);
-  ctx.bezierCurveTo(ANCHO * 0.3, ALTO * 0.4, ANCHO * 0.6, ALTO * 0.9, ANCHO + 20, ALTO * 0.45); ctx.stroke();
-
-  for (const d of decorado) {
-    if (d.tipo === 'pasto') {
-      ctx.strokeStyle = 'rgba(80,120,90,.35)'; ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 3, d.y - 7);
-      ctx.moveTo(d.x, d.y); ctx.lineTo(d.x + 3, d.y - 7);
-      ctx.stroke();
-    } else if (d.tipo === 'tumba') {
-      ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.g);
-      sombra(0, 4, 14, 5);
-      ctx.fillStyle = '#4a4f5c';
-      ctx.beginPath(); ctx.roundRect(-10, -22, 20, 26, [10, 10, 2, 2]); ctx.fill();
-      ctx.fillStyle = '#5c6270';
-      ctx.fillRect(-1.5, -17, 3, 12); ctx.fillRect(-5, -13, 10, 3);  // cruz grabada
-      ctx.restore();
-    } else if (d.tipo === 'arbol') {
-      sombra(d.x + 6, d.y + 8, d.r, d.r * 0.5);
-      circulo(d.x, d.y, d.r, '#0f1a17');
-      circulo(d.x - d.r * 0.3, d.y - d.r * 0.3, d.r * 0.55, '#152420');
+  for (const [tipo, n] of Object.entries(esc.elementos)) {
+    if (tipo === 'alfombra') { decorado.push({ tipo, x: c.x, y: ALTO_HUD }); continue; }
+    if (tipo === 'columna' || tipo === 'columnaGrande') {
+      // Columnas en dos filas simétricas a los lados (salones y catedral)
+      const filas = Math.ceil(n / 2), r = TAMANO[tipo];
+      for (let i = 0; i < n; i++) {
+        const lado = i % 2 ? ANCHO - 70 : 70;
+        const y = ALTO_HUD + 90 + Math.floor(i / 2) * ((ALTO - ALTO_HUD - 140) / Math.max(1, filas - 1 || 1));
+        if (largo(resta({ x: lado, y }, c)) > ZONA_LIBRE + r) decorado.push({ tipo, x: lado, y });
+      }
+      continue;
+    }
+    for (let i = 0; i < n; i++) {
+      if (tipo === 'pasto') { const p = { x: azar(0, ANCHO), y: azar(ALTO_HUD, ALTO) }; if (largo(resta(p, c)) > ZONA_LIBRE) decorado.push({ tipo, ...p }); continue; }
+      const p = colocar(tipo);
+      if (!p) continue;
+      decorado.push({
+        tipo, ...p,
+        g: azar(-1, 1) * (esc.inclinadas ? 0.35 : 0.12),   // inclinación (lápidas)
+        v: Math.random(),                                   // variación de forma
+        fase: azar(0, Math.PI * 2),                         // para animaciones
+      });
     }
   }
-  // Niebla flotante sutil
-  for (let i = 0; i < 7; i++) {
+  decorado.sort((a, b) => a.y - b.y);    // dibujar de atrás hacia delante
+}
+
+// ---- Dibujo estático (se pinta una sola vez en el lienzo auxiliar) ----------
+function construirFondo() {
+  const lienzoAux = document.createElement('canvas');
+  lienzoAux.width = lienzo.width; lienzoAux.height = lienzo.height;
+  const ctxAux = lienzoAux.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  ctxAux.setTransform(escala * dpr, 0, 0, escala * dpr, 0, 0);
+  const real = ctx; ctx = ctxAux;       // las funciones de dibujo usan "ctx": se apunta al auxiliar
+  try { dibujarFondoEstatico(); } finally { ctx = real; }
+  fondoCache = lienzoAux;
+}
+
+function dibujarFondoEstatico() {
+  const esc = escenarioActual();
+  // Suelo con un poco de luz en el centro
+  const g = ctx.createRadialGradient(ANCHO / 2, ALTO * 0.45, 40, ANCHO / 2, ALTO / 2, ALTO * 0.75);
+  g.addColorStop(0, esc.suelo[0]); g.addColorStop(1, esc.suelo[1]);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, ANCHO, ALTO);
+  // Piso según el lugar
+  if (esc.piso === 'losas') dibujarLosas(esc);
+  else dibujarSendero(esc.piso === 'piedra');
+  // Cielo con luna y silueta del horizonte (detrás del marcador)
+  dibujarCielo(esc);
+  // Primero lo que va pegado al piso (alfombra, símbolos, luz de ventanas, charcos…)
+  const PLANOS = new Set(['alfombra', 'simbolo', 'ventanaLuz', 'grieta', 'charco', 'raiz', 'pasto']);
+  for (const d of decorado) if (PLANOS.has(d.tipo)) DIBUJOS[d.tipo](d, esc);
+  // Tierra removida al centro: el lugar del ataúd del vampiro (siempre visible)
+  const c = centroAtaud();
+  ctx.fillStyle = 'rgba(60,44,32,.75)';
+  ctx.beginPath(); ctx.ellipse(c.x, c.y + 6, 44, 70, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(90,66,48,.45)';
+  ctx.beginPath(); ctx.ellipse(c.x, c.y + 6, 30, 56, 0, 0, Math.PI * 2); ctx.fill();
+  // Después los elementos de pie (lápidas, árboles, casas, columnas…)
+  for (const d of decorado) if (!PLANOS.has(d.tipo)) (DIBUJOS[d.tipo] || (() => {}))(d, esc);
+}
+
+function dibujarSendero(empedrado) {
+  // Camino curvo; en la aldea es de piedras
+  const curva = (k) => {                  // punto de la curva Bézier del camino
+    const p0 = { x: -20, y: ALTO * 0.7 }, p1 = { x: ANCHO * 0.3, y: ALTO * 0.4 }, p2 = { x: ANCHO * 0.6, y: ALTO * 0.9 }, p3 = { x: ANCHO + 20, y: ALTO * 0.45 };
+    const u = 1 - k;
+    return { x: u * u * u * p0.x + 3 * u * u * k * p1.x + 3 * u * k * k * p2.x + k * k * k * p3.x,
+             y: u * u * u * p0.y + 3 * u * u * k * p1.y + 3 * u * k * k * p2.y + k * k * k * p3.y };
+  };
+  ctx.strokeStyle = empedrado ? 'rgba(60,56,54,.6)' : 'rgba(70,55,45,.45)';
+  ctx.lineWidth = 46; ctx.lineCap = 'round';
+  ctx.beginPath();
+  for (let k = 0; k <= 1.001; k += 0.02) { const p = curva(k); k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y); }
+  ctx.stroke();
+  if (!empedrado) return;
+  for (let k = 0; k <= 1; k += 0.012) {   // piedras del empedrado
+    const p = curva(k);
+    for (let j = 0; j < 3; j++) {
+      ctx.fillStyle = `rgba(${95 + j * 12},${90 + j * 10},${88 + j * 8},.55)`;
+      ctx.beginPath(); ctx.ellipse(p.x + azar(-16, 16), p.y + azar(-16, 16), azar(4, 7), azar(3, 5), azar(0, 3), 0, Math.PI * 2); ctx.fill();
+    }
+  }
+}
+
+function dibujarLosas(esc) {
+  // Piso de losas de piedra con pequeñas variaciones de tono
+  const lado = 54;
+  for (let y = ALTO_HUD - 20; y < ALTO; y += lado) {
+    for (let x = ((y / lado) % 2) * -lado / 2; x < ANCHO; x += lado) {
+      ctx.fillStyle = `rgba(255,255,255,${azar(0.01, 0.045)})`;
+      ctx.fillRect(x + 1, y + 1, lado - 2, lado - 2);
+      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, lado, lado);
+    }
+  }
+  // Sombra en las orillas (sensación de salón cerrado)
+  const s = ctx.createLinearGradient(0, 0, ANCHO, 0);
+  s.addColorStop(0, 'rgba(0,0,0,.45)'); s.addColorStop(0.18, 'rgba(0,0,0,0)');
+  s.addColorStop(0.82, 'rgba(0,0,0,0)'); s.addColorStop(1, 'rgba(0,0,0,.45)');
+  ctx.fillStyle = s; ctx.fillRect(0, 0, ANCHO, ALTO);
+}
+
+function dibujarCielo(esc) {
+  // Franja de cielo detrás del marcador
+  const g = ctx.createLinearGradient(0, 0, 0, ALTO_HUD + 10);
+  g.addColorStop(0, esc.cielo[1]); g.addColorStop(1, esc.cielo[0]);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, ANCHO, ALTO_HUD + 10);
+  // Estrellas fijas
+  for (let i = 0; i < 26; i++) { ctx.fillStyle = `rgba(239,233,225,${azar(0.2, 0.7)})`; ctx.fillRect(azar(0, ANCHO), azar(0, ALTO_HUD - 30), 1.5, 1.5); }
+  // Luna (entre los textos del marcador): resplandor + disco
+  const lx = 350, ly = 62, r = esc.lunaR;
+  const halo = ctx.createRadialGradient(lx, ly, r * 0.6, lx, ly, r * 3);
+  halo.addColorStop(0, esc.luna + '55'); halo.addColorStop(1, esc.luna + '00');
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(lx, ly, r * 3, 0, Math.PI * 2); ctx.fill();
+  circulo(lx, ly, r, esc.luna);
+  ctx.globalAlpha = 0.18; circulo(lx - r * 0.3, ly - r * 0.2, r * 0.25, '#000'); circulo(lx + r * 0.25, ly + r * 0.3, r * 0.18, '#000'); ctx.globalAlpha = 1;
+  // Silueta del horizonte
+  const base = ALTO_HUD + 10;
+  ctx.fillStyle = '#05040a';
+  ctx.beginPath(); ctx.moveTo(0, base);
+  const s = esc.silueta;
+  if (s === 'cementerio') {
+    for (let x = 0; x <= ANCHO; x += 30) {
+      const h = 10 + (x * 7 % 13);
+      ctx.lineTo(x, base - h); ctx.lineTo(x + 4, base - h); ctx.lineTo(x + 4, base - h - 8); ctx.lineTo(x + 8, base - h - 8); ctx.lineTo(x + 8, base - h); ctx.lineTo(x + 12, base - h); ctx.lineTo(x + 12, base - 6); ctx.lineTo(x + 30, base - 6);
+    }
+  } else if (s === 'bosque') {
+    for (let x = 0; x <= ANCHO; x += 22) ctx.lineTo(x + 11, base - 26 - ((x * 13) % 30)), ctx.lineTo(x + 22, base - 8);
+  } else if (s === 'aldea') {
+    for (let x = 0; x <= ANCHO; x += 64) {
+      const h = 22 + ((x * 3) % 14);
+      ctx.lineTo(x + 6, base - h); ctx.lineTo(x + 30, base - h - 22); ctx.lineTo(x + 40, base - h - 12);
+      ctx.lineTo(x + 40, base - h - 26); ctx.lineTo(x + 46, base - h - 26); ctx.lineTo(x + 46, base - h - 8);
+      ctx.lineTo(x + 56, base - h); ctx.lineTo(x + 64, base - 10);
+    }
+  } else if (s === 'castillo') {
+    for (let x = 0; x <= ANCHO; x += 90) {
+      ctx.lineTo(x, base - 30);
+      for (let m = 0; m < 4; m++) { ctx.lineTo(x + m * 12, base - 38); ctx.lineTo(x + m * 12 + 6, base - 38); ctx.lineTo(x + m * 12 + 6, base - 30); ctx.lineTo(x + m * 12 + 12, base - 30); }
+      ctx.lineTo(x + 52, base - 30); ctx.lineTo(x + 52, base - 70); ctx.lineTo(x + 64, base - 86); ctx.lineTo(x + 76, base - 70); ctx.lineTo(x + 76, base - 30); ctx.lineTo(x + 90, base - 30);
+    }
+  } else if (s === 'catedral') {
+    ctx.lineTo(0, base - 30);
+    for (const [x, h] of [[60, 70], [150, 50], [270, 110], [390, 50], [480, 70]]) {
+      ctx.lineTo(x - 26, base - 30); ctx.lineTo(x - 26, base - h); ctx.lineTo(x, base - h - 34); ctx.lineTo(x + 26, base - h); ctx.lineTo(x + 26, base - 30);
+    }
+    ctx.lineTo(ANCHO, base - 30);
+  }
+  ctx.lineTo(ANCHO, base); ctx.closePath(); ctx.fill();
+  if (s === 'catedral') {                // rosetón rojo de la catedral
+    ctx.strokeStyle = 'rgba(224,66,60,.6)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(270, base - 70, 12, 0, Math.PI * 2); ctx.stroke();
+    for (let a = 0; a < 6; a++) { ctx.beginPath(); ctx.moveTo(270, base - 70); ctx.lineTo(270 + Math.cos(a) * 12, base - 70 + Math.sin(a) * 12); ctx.stroke(); }
+  }
+  // Transición suave del cielo al suelo
+  const f = ctx.createLinearGradient(0, base - 4, 0, base + 30);
+  f.addColorStop(0, 'rgba(5,4,10,1)'); f.addColorStop(1, 'rgba(5,4,10,0)');
+  ctx.fillStyle = f; ctx.fillRect(0, base - 4, ANCHO, 34);
+}
+
+// Funciones de dibujo de cada elemento (reutilizadas por todas las noches)
+const DIBUJOS = {
+  pasto(d) {
+    ctx.strokeStyle = 'rgba(80,120,90,.32)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 3, d.y - 7); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x + 3, d.y - 7); ctx.stroke();
+  },
+  tumba(d) {                             // lápida gris con cruz grabada
+    ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.g);
+    sombra(0, 4, 14, 5);
+    ctx.fillStyle = '#4a4f5c';
+    ctx.beginPath(); ctx.roundRect(-10, -22, 20, 26, [10, 10, 2, 2]); ctx.fill();
+    ctx.fillStyle = '#5c6270'; ctx.fillRect(-1.5, -17, 3, 12); ctx.fillRect(-5, -13, 10, 3);
+    ctx.restore();
+  },
+  cruz(d) {                              // cruz de piedra
+    ctx.save(); ctx.translate(d.x, d.y); ctx.rotate(d.g);
+    sombra(0, 3, 10, 4);
+    ctx.fillStyle = '#545a68'; ctx.fillRect(-3, -30, 6, 32); ctx.fillRect(-11, -22, 22, 6);
+    ctx.restore();
+  },
+  tumbaAbierta(d) {                      // fosa abierta con tierra removida y lápida
+    ctx.fillStyle = 'rgba(70,52,38,.8)';
+    ctx.beginPath(); ctx.ellipse(d.x + 16, d.y + 6, 14, 9, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#050407'; ctx.beginPath(); ctx.roundRect(d.x - 12, d.y - 10, 22, 30, 3); ctx.fill();
+    ctx.strokeStyle = 'rgba(90,70,50,.9)'; ctx.lineWidth = 2; ctx.strokeRect(d.x - 12, d.y - 10, 22, 30);
+    DIBUJOS.tumba({ x: d.x - 1, y: d.y - 12, g: d.g * 1.5 });
+  },
+  arbolSeco(d) {                         // árbol sin hojas, ramas rectas
+    sombra(d.x, d.y + 2, 18, 6);
+    ramas(d.x, d.y, -Math.PI / 2, 44 + d.v * 14, 6, 3, '#1e1913', 0.5);
+  },
+  arbolTorcido(d) {                      // árbol retorcido con raíces
+    sombra(d.x, d.y + 2, 22, 7);
+    ctx.strokeStyle = '#17121c'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.quadraticCurveTo(d.x - 14, d.y + 6, d.x - 22, d.y + 4); ctx.moveTo(d.x, d.y); ctx.quadraticCurveTo(d.x + 12, d.y + 8, d.x + 20, d.y + 6); ctx.stroke();
+    ramas(d.x, d.y, -Math.PI / 2 + (d.v - 0.5) * 0.4, 50 + d.v * 16, 8, 3, '#141018', 0.8);
+  },
+  raiz(d) {
+    ctx.strokeStyle = 'rgba(40,30,26,.8)'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(d.x - 18, d.y); ctx.bezierCurveTo(d.x - 6, d.y - 8, d.x + 4, d.y + 8, d.x + 18, d.y - 2); ctx.stroke();
+  },
+  piedra(d) {
+    sombra(d.x, d.y + 4, 11, 4);
+    ctx.fillStyle = '#3b3e46'; ctx.beginPath(); ctx.ellipse(d.x, d.y, 10 + d.v * 4, 7, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#50545e'; ctx.beginPath(); ctx.ellipse(d.x - 3, d.y - 2, 4, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+  },
+  charco(d) {                            // charco oscuro con reflejo
+    ctx.fillStyle = 'rgba(20,30,45,.85)'; ctx.beginPath(); ctx.ellipse(d.x, d.y, 24, 11, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(160,190,220,.25)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.ellipse(d.x - 6, d.y - 3, 9, 3, 0, Math.PI, Math.PI * 2); ctx.stroke();
+  },
+  casa(d, esc) {                         // casita de frente: pared, techo, puerta y ventanas
+    const rota = esc.casasRotas;
+    sombra(d.x, d.y + 22, 46, 8);
+    ctx.fillStyle = rota ? '#3a2d28' : '#3f342c'; ctx.fillRect(d.x - 38, d.y - 18, 76, 40);       // pared
+    ctx.fillStyle = '#1a1416';                                                                    // techo
+    ctx.beginPath(); ctx.moveTo(d.x - 46, d.y - 16); ctx.lineTo(d.x, d.y - 52); ctx.lineTo(d.x + 46, d.y - 16); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#2a2224'; ctx.fillRect(d.x + 16, d.y - 50, 9, 18);                          // chimenea
+    if (rota) {                                                                                    // hueco en el techo y grietas
+      ctx.fillStyle = '#0a0708'; ctx.beginPath(); ctx.moveTo(d.x - 20, d.y - 28); ctx.lineTo(d.x - 6, d.y - 40); ctx.lineTo(d.x - 2, d.y - 26); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.6)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(d.x - 30, d.y - 10); ctx.lineTo(d.x - 24, d.y); ctx.lineTo(d.x - 28, d.y + 10); ctx.stroke();
+    }
+    ctx.fillStyle = '#1c1310'; ctx.fillRect(d.x - 7, d.y + 2, 14, 20);                            // puerta
+    ctx.fillStyle = '#0d0a0a'; ctx.fillRect(d.x - 28, d.y - 8, 12, 11); ctx.fillRect(d.x + 16, d.y - 8, 12, 11);   // ventanas (la luz es animada)
+    if (rota) { ctx.strokeStyle = '#5a4030'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(d.x + 15, d.y - 8); ctx.lineTo(d.x + 29, d.y + 3); ctx.stroke(); }
+  },
+  barril(d) {
+    sombra(d.x, d.y + 10, 10, 4);
+    ctx.fillStyle = '#4a3220'; ctx.beginPath(); ctx.roundRect(d.x - 9, d.y - 12, 18, 22, 5); ctx.fill();
+    ctx.fillStyle = '#2b1d12'; ctx.fillRect(d.x - 9, d.y - 6, 18, 2); ctx.fillRect(d.x - 9, d.y + 3, 18, 2);
+  },
+  cerca(d) {                             // cerca de madera
+    ctx.fillStyle = '#3a2a1c';
+    for (let i = 0; i < 4; i++) ctx.fillRect(d.x - 27 + i * 18, d.y - 18, 4, 22);
+    ctx.fillRect(d.x - 28, d.y - 13, 58, 3); ctx.fillRect(d.x - 28, d.y - 4, 58, 3);
+  },
+  farol(d) {                             // poste con farol (el brillo es animado)
+    sombra(d.x, d.y + 2, 8, 3);
+    ctx.fillStyle = '#1c1a1e'; ctx.fillRect(d.x - 2, d.y - 40, 4, 42);
+    ctx.fillStyle = '#2a2428'; ctx.fillRect(d.x - 6, d.y - 50, 12, 12);
+  },
+  grieta(d) {                            // grieta en el suelo
+    ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(d.x - 16, d.y); ctx.lineTo(d.x - 6, d.y - 4); ctx.lineTo(d.x, d.y + 3); ctx.lineTo(d.x + 9, d.y - 2); ctx.lineTo(d.x + 16, d.y + 4); ctx.stroke();
+  },
+  columna(d) { columnaGotica(d.x, d.y, 16, 70); },
+  columnaGrande(d) { columnaGotica(d.x, d.y, 22, 96); },
+  muro(d) {                              // tramo de muro de ladrillos
+    sombra(d.x, d.y + 4, 50, 6);
+    ctx.fillStyle = '#34323c'; ctx.fillRect(d.x - 48, d.y - 30, 96, 32);
+    ctx.strokeStyle = 'rgba(0,0,0,.4)'; ctx.lineWidth = 1.5;
+    for (let f = 0; f < 4; f++) {
+      ctx.beginPath(); ctx.moveTo(d.x - 48, d.y - 30 + f * 8); ctx.lineTo(d.x + 48, d.y - 30 + f * 8); ctx.stroke();
+      for (let x = (f % 2) * 8; x < 96; x += 16) { ctx.beginPath(); ctx.moveTo(d.x - 48 + x, d.y - 30 + f * 8); ctx.lineTo(d.x - 48 + x, d.y - 22 + f * 8); ctx.stroke(); }
+    }
+  },
+  estatua(d) {                           // figura encapuchada sobre pedestal
+    sombra(d.x, d.y + 4, 16, 5);
+    ctx.fillStyle = '#3c3f4a'; ctx.fillRect(d.x - 14, d.y - 10, 28, 12);
+    ctx.fillStyle = '#4c505c';
+    ctx.beginPath(); ctx.moveTo(d.x - 11, d.y - 10); ctx.lineTo(d.x, d.y - 50); ctx.lineTo(d.x + 11, d.y - 10); ctx.closePath(); ctx.fill();
+    circulo(d.x, d.y - 48, 7, '#4c505c'); circulo(d.x, d.y - 47, 4, '#1a1b22');
+  },
+  antorcha(d) { soporteAntorcha(d.x, d.y); },
+  antorchaRoja(d) { soporteAntorcha(d.x, d.y); },
+  bandera(d) {                           // estandarte oscuro de los cazadores
+    sombra(d.x, d.y + 2, 8, 3);
+    ctx.fillStyle = '#2a2224'; ctx.fillRect(d.x - 2, d.y - 64, 4, 66);
+    ctx.fillStyle = '#5a1414';
+    ctx.beginPath(); ctx.moveTo(d.x + 2, d.y - 62); ctx.lineTo(d.x + 30, d.y - 62); ctx.lineTo(d.x + 30, d.y - 24); ctx.lineTo(d.x + 16, d.y - 32); ctx.lineTo(d.x + 2, d.y - 24); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#c9c9d1'; ctx.lineWidth = 2;                           // emblema: dos estacas cruzadas
+    ctx.beginPath(); ctx.moveTo(d.x + 9, d.y - 54); ctx.lineTo(d.x + 23, d.y - 38); ctx.moveTo(d.x + 23, d.y - 54); ctx.lineTo(d.x + 9, d.y - 38); ctx.stroke();
+  },
+  armas(d) {                             // armero con lanzas y escudo
+    ctx.fillStyle = '#2e2620'; ctx.fillRect(d.x - 22, d.y - 4, 44, 6);
+    ctx.strokeStyle = '#7a7e88'; ctx.lineWidth = 2.5;
+    for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(d.x - 14 + i * 14, d.y); ctx.lineTo(d.x - 14 + i * 14, d.y - 46); ctx.stroke(); ctx.fillStyle = '#9aa0aa'; tri(d.x - 18 + i * 14, d.y - 44, d.x - 10 + i * 14, d.y - 44, d.x - 14 + i * 14, d.y - 54); }
+    circulo(d.x, d.y - 20, 10, '#4a1a1a'); circulo(d.x, d.y - 20, 4, '#9aa0aa');
+  },
+  vela(d) { ctx.fillStyle = '#d8d0c0'; ctx.fillRect(d.x - 2.5, d.y - 12, 5, 12); ctx.fillStyle = '#3a3030'; ctx.fillRect(d.x - 5, d.y - 1, 10, 3); },
+  ventanaLuz(d) {                        // luz de luna que entra por un ventanal y cae al piso
+    ctx.fillStyle = 'rgba(170,190,255,.10)';
+    ctx.beginPath(); ctx.moveTo(d.x - 22, d.y - 40); ctx.lineTo(d.x + 22, d.y - 40); ctx.lineTo(d.x + 44, d.y + 40); ctx.lineTo(d.x - 4, d.y + 40); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 3;                   // marco del ventanal
+    ctx.beginPath(); ctx.moveTo(d.x, d.y - 40); ctx.lineTo(d.x + 20, d.y + 40); ctx.moveTo(d.x - 13, d.y); ctx.lineTo(d.x + 33, d.y); ctx.stroke();
+  },
+  simbolo(d) {                           // símbolo gótico grabado en el piso
+    ctx.strokeStyle = 'rgba(200,40,50,.28)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(d.x, d.y, 30, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(d.x, d.y, 22, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath();
+    for (let i = 0; i <= 5; i++) { const a = -Math.PI / 2 + i * Math.PI * 4 / 5; i ? ctx.lineTo(d.x + Math.cos(a) * 22, d.y + Math.sin(a) * 22) : ctx.moveTo(d.x + Math.cos(a) * 22, d.y + Math.sin(a) * 22); }
+    ctx.stroke();
+  },
+  alfombra(d) {                          // alfombra roja por el centro de la catedral (plana, sin colisión)
+    ctx.fillStyle = 'rgba(110,14,24,.55)'; ctx.fillRect(d.x - 42, d.y, 84, ALTO - d.y);
+    ctx.fillStyle = 'rgba(200,160,70,.35)'; ctx.fillRect(d.x - 42, d.y, 4, ALTO - d.y); ctx.fillRect(d.x + 38, d.y, 4, ALTO - d.y);
+  },
+};
+// Ramas recursivas para los árboles secos y torcidos
+function ramas(x, y, ang, largoR, grosor, nivel, color, torcido) {
+  const x2 = x + Math.cos(ang) * largoR, y2 = y + Math.sin(ang) * largoR;
+  ctx.strokeStyle = color; ctx.lineWidth = grosor; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(x, y);
+  ctx.quadraticCurveTo((x + x2) / 2 + Math.sin(ang * 3) * torcido * 8, (y + y2) / 2, x2, y2); ctx.stroke();
+  if (nivel <= 0) return;
+  ramas(x2, y2, ang - 0.5 - torcido * 0.2, largoR * 0.62, grosor * 0.62, nivel - 1, color, torcido);
+  ramas(x2, y2, ang + 0.45 + torcido * 0.15, largoR * 0.58, grosor * 0.62, nivel - 1, color, torcido);
+}
+function columnaGotica(x, y, ancho, alto) {
+  sombra(x + 8, y + 4, ancho + 8, 7);
+  const g = ctx.createLinearGradient(x - ancho / 2, 0, x + ancho / 2, 0);
+  g.addColorStop(0, '#2c2c36'); g.addColorStop(0.5, '#4a4a58'); g.addColorStop(1, '#22222a');
+  ctx.fillStyle = '#2a2a33'; ctx.fillRect(x - ancho / 2 - 5, y - 8, ancho + 10, 10);             // base
+  ctx.fillStyle = g; ctx.fillRect(x - ancho / 2, y - alto, ancho, alto - 8);                       // fuste
+  ctx.fillStyle = '#3a3a46'; ctx.fillRect(x - ancho / 2 - 5, y - alto - 8, ancho + 10, 10);        // capitel
+  ctx.strokeStyle = 'rgba(0,0,0,.25)'; ctx.lineWidth = 1;
+  for (let i = 1; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x - ancho / 2 + i * ancho / 3, y - alto); ctx.lineTo(x - ancho / 2 + i * ancho / 3, y - 8); ctx.stroke(); }
+}
+function soporteAntorcha(x, y) {
+  ctx.fillStyle = '#2a2420'; ctx.fillRect(x - 2, y - 26, 4, 26);
+  ctx.fillStyle = '#3a2a1a'; ctx.fillRect(x - 5, y - 30, 10, 6);
+}
+
+// ---- Efectos animados (ligeros, cada cuadro, debajo de los personajes) -----
+function dibujarAmbiente(t) {
+  const esc = escenarioActual(), an = esc.animados || {};
+  // Niebla con transparencia
+  for (let i = 0; i < 6; i++) {
     const x = ((t * 12 + i * 260) % (ANCHO + 300)) - 150;
-    const y = 150 + i * 120;
+    const y = ALTO_HUD + 40 + i * ((ALTO - ALTO_HUD) / 6);
     const n = ctx.createRadialGradient(x, y, 0, x, y, 150);
-    n.addColorStop(0, 'rgba(180,190,210,.06)'); n.addColorStop(1, 'rgba(180,190,210,0)');
+    n.addColorStop(0, `rgba(${esc.niebla},${esc.nieblaAlfa})`); n.addColorStop(1, `rgba(${esc.niebla},0)`);
     ctx.fillStyle = n; ctx.fillRect(x - 150, y - 150, 300, 300);
   }
+  for (const d of decorado) {
+    switch (d.tipo) {
+      case 'antorcha': case 'antorchaRoja': flama(d.x, d.y - 32, t + d.fase, d.tipo === 'antorchaRoja', 1); break;
+      case 'vela': flama(d.x, d.y - 13, t * 1.3 + d.fase, false, 0.45); break;
+      case 'farol': {                    // farol rojizo que late
+        const a = 0.35 + Math.sin(t * 3 + d.fase) * 0.1;
+        ctx.fillStyle = `rgba(255,90,60,${a * 0.35})`; ctx.beginPath(); ctx.arc(d.x, d.y - 44, 22, 0, Math.PI * 2); ctx.fill();
+        circulo(d.x, d.y - 44, 4, `rgba(255,140,90,${a + 0.4})`);
+        break;
+      }
+      case 'casa': {
+        if (an.ventanas) {               // ventanas con luz tenue que parpadea
+          const a = 0.45 + Math.sin(t * 5 + d.fase) * 0.08 + Math.sin(t * 13 + d.fase) * 0.05;
+          ctx.fillStyle = `rgba(${an.ventanas},${a})`;
+          if (d.v > 0.25) ctx.fillRect(d.x - 27, d.y - 7, 10, 9);
+          if (d.v < 0.75) ctx.fillRect(d.x + 17, d.y - 7, 10, 9);
+        }
+        if (an.humo) {                   // humo suave saliendo de la chimenea
+          for (let k = 0; k < 3; k++) {
+            const f = ((t * 0.35 + k / 3 + d.fase) % 1);
+            ctx.fillStyle = `rgba(120,110,120,${0.22 * (1 - f)})`;
+            ctx.beginPath(); ctx.arc(d.x + 20 + Math.sin(f * 6 + d.fase) * 6, d.y - 54 - f * 46, 5 + f * 10, 0, Math.PI * 2); ctx.fill();
+          }
+        }
+        break;
+      }
+      case 'arbolTorcido':
+        if (an.ojos && d.v > 0.35) {     // ojos brillantes entre los árboles (parpadean)
+          const abierto = Math.sin(t * 0.8 + d.fase * 3) > -0.7 && (t + d.fase) % 4 > 0.15;
+          if (abierto) {
+            const col = an.ojosRojos ? '255,60,60' : '210,255,120';
+            ctx.fillStyle = `rgba(${col},.85)`;
+            circulo(d.x - 4, d.y - 30, 1.8, `rgba(${col},.9)`); circulo(d.x + 4, d.y - 30, 1.8, `rgba(${col},.9)`);
+          }
+        }
+        break;
+    }
+  }
+  // Luces fantasmales flotando (tumbas abiertas)
+  for (let i = 0; i < (an.fantasmas || 0); i++) {
+    const x = ANCHO * ((i * 0.23 + 0.1) % 1) + Math.sin(t * 0.7 + i) * 40;
+    const y = ALTO_HUD + 80 + ((i * 173) % (ALTO - ALTO_HUD - 160)) + Math.cos(t * 0.9 + i * 2) * 25;
+    const a = 0.35 + Math.sin(t * 2 + i) * 0.15;
+    ctx.fillStyle = `rgba(150,255,220,${a * 0.25})`; ctx.beginPath(); ctx.arc(x, y, 12, 0, Math.PI * 2); ctx.fill();
+    circulo(x, y, 3.5, `rgba(200,255,235,${a + 0.3})`);
+  }
+  // Luces rojas tenues (bosque de las sombras)
+  for (let i = 0; i < (an.lucesRojas || 0); i++) {
+    const x = ANCHO * ((i * 0.31 + 0.15) % 1), y = ALTO_HUD + 120 + ((i * 211) % (ALTO - ALTO_HUD - 200));
+    const a = 0.12 + Math.sin(t * 1.5 + i * 2) * 0.06;
+    ctx.fillStyle = `rgba(255,40,40,${a})`; ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI * 2); ctx.fill();
+  }
+  // Partículas flotantes (pocas, calculadas con el tiempo: sin memoria extra)
+  const p = esc.particulas;
+  if (p) for (let i = 0; i < p.n; i++) {
+    const x = (i * 97 + Math.sin(t * 0.5 + i) * 30 + ANCHO) % ANCHO;
+    const y = ALTO - ((t * (14 + (i % 5) * 4) + i * 131) % (ALTO - ALTO_HUD));
+    circulo(x, y, 1.6, `rgba(${p.color},${0.35 + 0.3 * Math.sin(t * 3 + i)})`);
+  }
+}
+// Llama animada de antorcha o vela
+function flama(x, y, t, roja, esc) {
+  const parpadeo = 1 + Math.sin(t * 17) * 0.12 + Math.sin(t * 29) * 0.08;
+  const r = 34 * esc * parpadeo;
+  const halo = ctx.createRadialGradient(x, y, 2, x, y, r);
+  halo.addColorStop(0, roja ? 'rgba(255,60,40,.35)' : 'rgba(255,170,70,.32)'); halo.addColorStop(1, 'rgba(255,120,40,0)');
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+  const h = 12 * esc * parpadeo, w = 5 * esc;
+  ctx.fillStyle = roja ? '#e0302a' : '#ff8a2a';
+  ctx.beginPath(); ctx.moveTo(x - w, y + 2); ctx.quadraticCurveTo(x - w, y - h * 0.5, x + Math.sin(t * 9) * 2, y - h); ctx.quadraticCurveTo(x + w, y - h * 0.5, x + w, y + 2); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = roja ? '#ff9a6a' : '#ffe08a';
+  ctx.beginPath(); ctx.ellipse(x, y - h * 0.25, w * 0.45, h * 0.35, 0, 0, Math.PI * 2); ctx.fill();
+}
+
+// Fondo de cada cuadro: el escenario guardado + los efectos animados
+function dibujarFondo(t) {
+  if (!fondoCache || fondoCache.width !== lienzo.width || fondoCache.height !== lienzo.height) construirFondo();
+  ctx.drawImage(fondoCache, 0, 0, ANCHO, ALTO);
+  dibujarAmbiente(t);
+}
+
+// ---- Presentación del escenario al empezar la noche (unos 2 segundos) ------
+const DUR_PRESENTACION = 2.2;
+let tPresentacion = 0;                   // segundos que le quedan a la presentación
+function dibujarPresentacion() {
+  if (tPresentacion <= 0) return;
+  const pasado = DUR_PRESENTACION - tPresentacion;
+  const entra = Math.min(1, pasado / 0.35);              // aparece…
+  const alfa = Math.min(entra, tPresentacion / 0.5);     // …y se desvanece
+  const y = ALTO_HUD + (ALTO - ALTO_HUD) * 0.2 + (1 - entra) * 24;
+  ctx.save();
+  ctx.globalAlpha = alfa;
+  const banda = ctx.createLinearGradient(0, 0, ANCHO, 0);
+  banda.addColorStop(0, 'rgba(0,0,0,0)'); banda.addColorStop(0.2, 'rgba(0,0,0,.6)'); banda.addColorStop(0.8, 'rgba(0,0,0,.6)'); banda.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = banda; ctx.fillRect(0, y - 52, ANCHO, 100);
+  texto(`NOCHE ${noche}`, ANCHO / 2, y - 24, 18, '#c9c3dc');
+  const nombre = escenarioActual().nombre.toUpperCase();
+  texto(nombre, ANCHO / 2, y + 14, nombre.length > 22 ? 34 : 40, noche === NOCHE_FINAL ? '#ff6b6b' : '#e8e4c9', 'display');
+  ctx.restore();
 }
 
 // ---- Entidades -----------------------------------------------------------
@@ -1458,6 +1909,7 @@ function volverAGirar() {
 function jugarNoche() {
   if (estado !== 'ruleta' || !ruleta.lista) return;
   estado = 'jugando';
+  tPresentacion = DUR_PRESENTACION;      // nombre del escenario unos segundos (no detiene el juego)
   joystick.activo = false;
 }
 function pausar() { if (estado === 'jugando') { estado = 'pausa'; joystick.activo = false; } }
@@ -1812,6 +2264,7 @@ function actualizar(dt) {
   if (estado === 'amanecer') { animarAmanecer(dt); return; }
   if (estado === 'ruleta') { animarRuleta(dt); return; }
   if (estado !== 'jugando') return;
+  tPresentacion = Math.max(0, tPresentacion - dt);
   tiempoNoche += dt;
   tiempoTotal += dt;
   vampiro.actualizar(dt);
@@ -1964,7 +2417,7 @@ function dibujarRuleta() {
   ctx.save(); ctx.translate(0, (ALTO - 960) / 2 - 40);   // centrar en pantallas altas
   const [dif, colorDif] = nombreDificultad(noche);
   texto(`Noche ${noche}`, ANCHO / 2, 110, 64, '#e8e4c9', 'display');
-  texto(dif, ANCHO / 2, 160, 20, colorDif);
+  texto(`${dif} · ${escenarioActual().nombre}`, ANCHO / 2, 160, 20, colorDif);
   texto(AVISOS_NOCHE[noche] || 'Sobrevive hasta el amanecer', ANCHO / 2, 188, 14, '#a9a3c2');
   texto('Poder de esta noche', ANCHO / 2, 232, 16, '#efe9e1');
   const cx = ANCHO / 2, cy = 430, R = 160, ang = anguloRuleta();
@@ -2091,6 +2544,7 @@ function dibujar(t) {
   dibujarHud();
   dibujarJoystick();
   dibujarCombo();
+  if (estado === 'jugando' || estado === 'pausa') dibujarPresentacion();
 
   if (estado === 'pausa') {
     velo();
