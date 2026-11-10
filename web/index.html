@@ -76,6 +76,7 @@
   #btn-niebla { --color: var(--niebla); }
   #btn-hipnosis { --color: #22b8c4; }
   #btn-enjambre { --color: #e08a2f; }
+  #btn-hielo { --color: #4fb3e8; }
   #btn-siervo { --color: #b8326a; }
   .poder { font-size: 9.5px; letter-spacing: 0; }
   /* Asegura que los botones ocultos no se muestren aunque usen display: grid */
@@ -218,6 +219,13 @@
       Hipnosis
     </span>
   </button>
+  <button id="btn-hielo" class="poder" type="button" aria-label="Congelar a todos" hidden>
+    <div class="carga" id="carga-hielo"></div>
+    <span>
+      <svg viewBox="0 0 40 22" aria-hidden="true"><path d="M19 0h2v22h-2zM10.3 4.6l1-1.7 18.4 16.5-1 1.7zM28.7 2.9l1 1.7-18.4 16.5-1-1.7zM16 1l4 3 4-3v2.5l-4 3-4-3zM16 21l4-3 4 3v-2.5l-4-3-4 3z"/></svg>
+      Congelar
+    </span>
+  </button>
   <button id="btn-enjambre" class="poder" type="button" aria-label="Enjambre de murciélagos" hidden>
     <div class="carga" id="carga-enjambre"></div>
     <span>
@@ -285,7 +293,7 @@
    - Gana monedas (mordidas, cazadores, combos y noches). Se guardan entre
      partidas y se gastan en mejoras permanentes en la Tienda.
    Controles: joystick táctil o teclado: flechas/WASD; ESPACIO = murciélago,
-   E = niebla, Q = hipnosis, F = enjambre, C = siervo, P = pausa.
+   E = niebla, Q = hipnosis, F = enjambre, G = congelar, C = siervo, P = pausa.
    ===================================================================== */
 
 // ---- Configuración -------------------------------------------------------
@@ -306,6 +314,8 @@ const COSTO_SIERVO = 20, SIERVO_ESPERA = 5, RADIO_CONVERTIR = 130, SANGRE_POR_SI
 const HIPNOSIS_ESPERA = 10, HIPNOSIS_DURA = 3.5, HIPNOSIS_RADIO = 220;
 // Enjambre (se compra en la tienda): murciélagos que giran a tu alrededor
 const ENJAMBRE_ESPERA = 18, ENJAMBRE_DURA = 7, ENJAMBRE_RADIO = 52;
+// Congelar: detiene a todos (cazadores, aldeanos y estacas) unos segundos
+const HIELO_ESPERA = 18, HIELO_DURA = 4;
 // Estacas lanzadas por los cazadores desde la noche 3
 const NOCHE_ESTACAS = 3, ESTACA_DANO = 15;
 // Tiro de cada tipo de cazador: distancia para lanzar, velocidad y alcance de la estaca, espera
@@ -339,6 +349,7 @@ const PODERES = [
   { id: 'niebla', nombre: 'Niebla roja', desc: 'Muerde 5 aldeanos: elimina a los cercanos', color: '#d9a6ff' },
   { id: 'hipnosis', nombre: 'Hipnosis', desc: 'Paraliza cazadores; tócalos para morderlos', color: '#5fe3ec' },
   { id: 'enjambre', nombre: 'Enjambre', desc: 'Murciélagos que te protegen y atrapan estacas', color: '#ffb366' },
+  { id: 'hielo', nombre: 'Congelar', desc: 'Congela a todos; toca cazadores para romperlos', color: '#9fdcff' },
 ];
 // Mejoras permanentes de la tienda (por niveles)
 const MEJORAS = [
@@ -534,6 +545,15 @@ const Sonido = {
     this.tono(95, 0.35, { tipo: 'sine', hasta: 40, vol: 0.7 });
     this.ruido(0.25, { freq: 350, tipo: 'lowpass', vol: 0.5 });
   },
+  hielo() {                              // cristal que se congela: brillo agudo que baja
+    this.tono(2600, 0.8, { tipo: 'sine', hasta: 900, vol: 0.12 });
+    this.tono(3900, 0.6, { tipo: 'triangle', hasta: 1300, vol: 0.05, cuando: 0.05 });
+    this.ruido(0.9, { freq: 6000, hasta: 2500, tipo: 'highpass', vol: 0.25 });
+  },
+  romperHielo() {                        // hielo que se quiebra
+    this.ruido(0.25, { freq: 4000, tipo: 'highpass', vol: 0.4 });
+    this.tono(1800, 0.15, { tipo: 'square', hasta: 600, vol: 0.05 });
+  },
   tic() { this.tono(1800, 0.03, { tipo: 'square', vol: 0.04 }); },   // ruleta girando
   siervo() {                             // conversión: tono que baja, oscuro
     this.tono(300, 0.6, { tipo: 'sawtooth', hasta: 120, vol: 0.08 });
@@ -652,6 +672,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'e') accionNiebla();
   if (k === 'q') accionHipnosis();
   if (k === 'f') accionEnjambre();
+  if (k === 'g') lanzarHielo();
   if (k === 'c') convertirSiervo();
   if (k === 'p') { if (estado === 'jugando') pausar(); else if (estado === 'pausa') reanudar(); }
   if ((k === 'r' || k === 'enter') && tiendaEl.hidden) {
@@ -705,6 +726,7 @@ document.getElementById('btn-murcielago').addEventListener('pointerdown', (e) =>
 document.getElementById('btn-niebla').addEventListener('pointerdown', (e) => { e.preventDefault(); accionNiebla(); });
 document.getElementById('btn-hipnosis').addEventListener('pointerdown', (e) => { e.preventDefault(); accionHipnosis(); });
 document.getElementById('btn-enjambre').addEventListener('pointerdown', (e) => { e.preventDefault(); accionEnjambre(); });
+document.getElementById('btn-hielo').addEventListener('pointerdown', (e) => { e.preventDefault(); lanzarHielo(); });
 document.getElementById('btn-siervo').addEventListener('pointerdown', (e) => { e.preventDefault(); convertirSiervo(); });
 document.getElementById('btn-pausa').addEventListener('pointerdown', (e) => { e.preventDefault(); pausar(); });
 document.getElementById('btn-jugar').addEventListener('click', () => jugarNoche());
@@ -1336,7 +1358,8 @@ function iniciarRuleta(regirar = false) {
   const i = PODERES.findIndex((p) => p.id === resultado);
   const desde = modulo(ruleta.hasta, Math.PI * 2);
   // Ángulo final: el centro del segmento elegido queda bajo la flecha (arriba), tras varias vueltas
-  let hasta = -Math.PI / 2 - (i * Math.PI / 2 + Math.PI / 4);
+  const SEG = Math.PI * 2 / PODERES.length;   // tamaño de cada segmento de la ruleta
+  let hasta = -Math.PI / 2 - (i * SEG + SEG / 2);
   while (hasta < desde + Math.PI * 8) hasta += Math.PI * 2;
   ruleta = { t: 0, dur: 2.4, desde, hasta, lista: false, resultado, ultimoSeg: -1 };
   poderNoche = null;
@@ -1350,7 +1373,7 @@ function animarRuleta(dt) {
   if (ruleta.lista) return;
   ruleta.t += dt;
   // "Tic" cada vez que un segmento pasa bajo la flecha
-  const seg = Math.floor(modulo(-Math.PI / 2 - anguloRuleta(), Math.PI * 2) / (Math.PI / 2));
+  const seg = Math.floor(modulo(-Math.PI / 2 - anguloRuleta(), Math.PI * 2) / (Math.PI * 2 / PODERES.length));
   if (seg !== ruleta.ultimoSeg) { ruleta.ultimoSeg = seg; Sonido.tic(); }
   if (ruleta.t >= ruleta.dur) { ruleta.lista = true; poderNoche = ruleta.resultado; Sonido.compra(); }
 }
@@ -1415,6 +1438,7 @@ function empezarNoche() {
   estacas = []; enjambre = []; tEnjambreActivo = 0;
   siervos = []; esperaSiervo = 0; jefeSalio = false;
   esperaHipnosis = 0; esperaEnjambre = 0;   // poderes listos al empezar la noche
+  esperaHielo = 0; tHielo = 0;
   cargaNiebla = 0;
   tiempoNoche = 0;
   monedasNoche = 0;
@@ -1432,6 +1456,17 @@ function continuar() {                   // toque en una pantalla de pausa
 // Onda de niebla: elimina a los cazadores dentro del radio
 // Tiempo de espera restante de cada poder (0 = listo)
 let esperaHipnosis = 0, esperaEnjambre = 0;
+let esperaHielo = 0, tHielo = 0;         // recarga de Congelar y segundos que queda todo congelado
+
+// Congelar: todo se detiene (cazadores, aldeanos, estacas); tocar a un cazador lo rompe
+function lanzarHielo() {
+  if (estado !== 'jugando' || !tiene('hielo') || esperaHielo > 0) return;
+  esperaHielo = HIELO_ESPERA;
+  tHielo = HIELO_DURA;
+  Sonido.hielo();
+  ondas.push({ x: vampiro.pos.x, y: vampiro.pos.y, r: 10, max: 900, color: '159,220,255' });
+  for (const c of cazadores) c.apuntando = 0;   // se les cancela el tiro
+}
 const hipnosisDesbloqueada = () => tiene('hipnosis');
 const enjambreDesbloqueado = () => tiene('enjambre');
 
@@ -1478,6 +1513,7 @@ function empezarEscenaAtaud() {
   estacas = []; enjambre = []; tEnjambreActivo = 0; avisoCombo = null;
   siervos.forEach((sv) => salpicar(sv.pos.x, sv.pos.y, '#9a9a9a', 16, 120));   // el sol convierte a los siervos en polvo
   siervos = [];
+  tHielo = 0;
   salpicar(ataud.x, ataud.y + 30, '#5a4636', 18, 120);   // tierra al salir el ataúd
   Sonido.ataudAbre();
 }
@@ -1618,10 +1654,14 @@ function actualizar(dt) {
     Sonido.jefe();
     mostrarCartel('¡Llegó El Inquisidor!', 'Aguanta 8 golpes: la niebla le quita 2', '#d9a6ff');
   }
-  aldeanos.forEach((a) => a.actualizar(dt));
-  cazadores.forEach((c) => c.actualizar(dt));
-  actualizarSiervos(dt);
-  actualizarEstacas(dt);
+  tHielo = Math.max(0, tHielo - dt);
+  esperaHielo = Math.max(0, esperaHielo - dt);
+  if (tHielo <= 0) {                     // congelados: ni aldeanos, ni cazadores, ni estacas se mueven
+    aldeanos.forEach((a) => a.actualizar(dt));
+    cazadores.forEach((c) => c.actualizar(dt));
+  }
+  actualizarSiervos(dt);                 // tus siervos no se congelan
+  if (tHielo <= 0) actualizarEstacas(dt);
   actualizarEnjambre(dt, tiempoTotal);
   esperaHipnosis = Math.max(0, esperaHipnosis - dt);
   esperaEnjambre = Math.max(0, esperaEnjambre - dt);
@@ -1650,6 +1690,11 @@ function actualizar(dt) {
     const d = resta(c.pos, vampiro.pos);
     if (largo(d) >= c.radio + Vampiro.RADIO + 4) return true;
     if (vampiro.esMurcielago) return golpearCazador(c) !== 2;   // el murciélago los atraviesa
+    if (tHielo > 0) {                    // congelado: al tocarlo se rompe como hielo
+      const r = golpearCazador(c);
+      if (r > 0) { Sonido.romperHielo(); salpicar(c.pos.x, c.pos.y, '#bfe9ff', 18, 180); }
+      return r !== 2;
+    }
     if (c.tHipno > 0) {                  // hipnotizado: lo muerdes y recuperas sangre
       const r = golpearCazador(c);
       if (r > 0) { vampiro.sangre = Math.min(SANGRE_MAX, vampiro.sangre + 10); Sonido.mordida(); }
@@ -1720,6 +1765,25 @@ function dibujarJoystick() {             // anillo y pulgar del joystick virtual
   circulo(o.x + d.x / escala, o.y + d.y / escala, 18 / escala, 'rgba(200,20,42,.6)');
 }
 
+// Todo congelado: bloque de hielo sobre cazadores y aldeanos, tinte azul y cuenta regresiva
+function dibujarHielo() {
+  const alfa = Math.min(1, tHielo / 0.5);  // se derrite al final
+  ctx.save();
+  ctx.globalAlpha = alfa;
+  for (const e of [...cazadores, ...aldeanos]) {
+    const r = e.radio || Aldeano.RADIO;
+    ctx.fillStyle = 'rgba(170,225,255,.38)';
+    ctx.strokeStyle = 'rgba(220,245,255,.85)'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.roundRect(e.pos.x - r - 6, e.pos.y - r - 18, (r + 6) * 2, r * 2 + 30, 6); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,.7)';      // brillo del hielo
+    ctx.beginPath(); ctx.moveTo(e.pos.x - r, e.pos.y - r - 10); ctx.lineTo(e.pos.x - r + 6, e.pos.y - r - 14); ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(120,200,255,.10)';         // tinte frío en toda la pantalla
+  ctx.fillRect(0, 0, ANCHO, ALTO);
+  ctx.restore();
+  texto(`Congelados ${Math.ceil(tHielo)} s`, ANCHO / 2, 140, 18, '#bfe9ff');
+}
+
 // Ruleta de poderes: rueda con 4 segmentos y flecha arriba
 function dibujarRuleta() {
   velo('rgba(0,0,0,.72)');
@@ -1730,15 +1794,16 @@ function dibujarRuleta() {
   texto('Poder de esta noche', ANCHO / 2, 232, 16, '#efe9e1');
   const cx = ANCHO / 2, cy = 430, R = 160, ang = anguloRuleta();
   PODERES.forEach((p, i) => {
-    const a0 = ang + i * Math.PI / 2;
-    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, a0, a0 + Math.PI / 2); ctx.closePath();
+    const SEG = Math.PI * 2 / PODERES.length;
+    const a0 = ang + i * SEG;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, R, a0, a0 + SEG); ctx.closePath();
     ctx.fillStyle = p.color; ctx.fill();
     ctx.strokeStyle = '#0b0916'; ctx.lineWidth = 4; ctx.stroke();
     // Nombre del poder a lo largo del radio
     // (si quedaría de cabeza, se gira media vuelta para que siempre se lea)
-    const medio = a0 + Math.PI / 4, alReves = Math.cos(medio) < 0;
+    const medio = a0 + SEG / 2, alReves = Math.cos(medio) < 0;
     ctx.save(); ctx.translate(cx, cy); ctx.rotate(alReves ? medio + Math.PI : medio);
-    texto(p.nombre, alReves ? -R * 0.58 : R * 0.58, 0, 16, '#140d1c');
+    texto(p.nombre, alReves ? -R * 0.6 : R * 0.6, 0, 15, '#140d1c');
     ctx.restore();
   });
   ctx.strokeStyle = '#f0be46'; ctx.lineWidth = 6;                       // aro dorado
@@ -1747,8 +1812,8 @@ function dibujarRuleta() {
   ctx.fillStyle = '#f0be46'; tri(cx - 16, cy - R - 26, cx + 16, cy - R - 26, cx, cy - R + 8);   // flecha
   if (ruleta.lista) {                     // resultado
     const p = PODERES.find((x) => x.id === poderNoche);
-    texto(p.nombre, cx, 640, 46, p.color, 'display');
-    texto(p.desc, cx, 680, 15, '#efe9e1');
+    texto(p.nombre, cx, 622, 46, p.color, 'display');
+    texto(p.desc, cx, 658, 15, '#efe9e1');
   }
 }
 
@@ -1838,6 +1903,7 @@ function dibujar(t) {
   // Al amanecer el vampiro lo dibuja la escena del ataúd
   const todos = [...aldeanos, ...siervos, ...cazadores, ...(estado === 'amanecer' ? [] : [vampiro])].sort((a, b) => a.pos.y - b.pos.y);
   todos.forEach((e) => e.dibujar(t));
+  if (tHielo > 0 && estado !== 'amanecer') dibujarHielo();
   if (estado === 'amanecer') dibujarAtaud(t);
   dibujarEstacas();
   dibujarEnjambre(t);
@@ -1917,6 +1983,7 @@ function actualizarBotones() {
   // Hipnosis y enjambre: aparecen al desbloquearse; el relleno sube mientras se recargan
   pintarPoderDeEspera('hipnosis', hipnosisDesbloqueada(), esperaHipnosis, HIPNOSIS_ESPERA);
   pintarPoderDeEspera('enjambre', enjambreDesbloqueado(), esperaEnjambre, ENJAMBRE_ESPERA);
+  pintarPoderDeEspera('hielo', tiene('hielo'), esperaHielo, HIELO_ESPERA);
 }
 function pintarPoderDeEspera(nombre, desbloqueado, espera, total) {
   const btn = document.getElementById('btn-' + nombre);
