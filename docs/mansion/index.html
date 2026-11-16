@@ -50,7 +50,7 @@
     max-width: 520px; margin: 0 auto;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
-    padding-block: 14px 110px;
+    padding-block: 10px 24px;
     display: flex; flex-direction: column; gap: 14px;
   }
   h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; text-wrap: balance; letter-spacing: .01em; }
@@ -97,7 +97,7 @@
   .barra .caso { font-family: var(--display); font-weight: 800; font-size: 20px; margin-right: auto; }
   .reloj { display: grid; gap: 4px; }
   .reloj .hora { display: flex; justify-content: space-between; font-weight: 700; font-variant-numeric: tabular-nums; }
-  .reloj .pista-sol { height: 12px; border-radius: 6px; border: 2px solid var(--borde); background: #1a1230; overflow: hidden; }
+  .reloj .pista-sol { height: 8px; border-radius: 6px; border: 2px solid var(--borde); background: #1a1230; overflow: hidden; }
   .reloj .pista-sol i { display: block; height: 100%; background: linear-gradient(90deg, #6b4fd6, #ff9f6b, var(--vela)); border-radius: 4px; transition: width .4s; }
 
   .misterio { display: flex; gap: 12px; align-items: center; }
@@ -145,13 +145,9 @@
   .fantasma .ya { position: absolute; top: 4px; left: 8px; font-size: 14px; }
 
   /* Botones fijos de abajo: libreta, pista y acusar */
-  .acciones {
-    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
-    padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
-    background: linear-gradient(transparent, var(--noche) 35%);
-  }
-  .acciones .fila { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: 1fr auto 1.2fr; gap: 10px; }
-  .acciones .btn { padding: 14px 10px; font-size: 17px; }
+  /* Botones de libreta, pista y acusar: debajo de la escena */
+  .acciones .fila { display: grid; grid-template-columns: 1fr auto 1.2fr; gap: 10px; }
+  .acciones .btn { padding: 12px 10px; font-size: 17px; }
   .acusar { background: var(--chicle); }
 
   /* ---- Hoja (ventana emergente desde abajo) ---- */
@@ -224,6 +220,33 @@
     background: var(--tinta); color: var(--borde); border: 3px solid var(--borde); border-radius: 999px; padding: 8px 16px; font-weight: 800; box-shadow: 0 4px 0 var(--borde);
     animation: pop .25s cubic-bezier(.3,1.6,.6,1); white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
 
+  /* ---- Escena interactiva ---- */
+  .misterio-mini { display: flex; gap: 10px; align-items: center; background: var(--noche-2); border: 3px solid var(--borde); border-radius: 16px; padding: 8px 12px; box-shadow: 0 4px 0 var(--borde); }
+  .misterio-mini span { font-size: 30px; line-height: 1; }
+  .misterio-mini b { font-family: var(--display); font-weight: 800; font-size: 16px; line-height: 1.15; }
+  .pestanas { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .pestana {
+    min-width: 0; border: 3px solid var(--borde); border-radius: 12px; background: var(--noche-2);
+    padding: 6px 2px; display: grid; justify-items: center; gap: 0; font-size: 12px; font-weight: 700; line-height: 1.1;
+  }
+  .pestana .ico { font-size: 20px; }
+  .pestana.activa { background: var(--vela); color: var(--borde); box-shadow: 0 3px 0 var(--borde); }
+  #escenario { position: relative; }
+  #juego { gap: 10px; display: flex; flex-direction: column; }
+  #juego[hidden] { display: none; }
+  #lienzo {
+    display: block; width: 100%; max-width: 100%; aspect-ratio: 400 / 520; height: auto; margin: 0 auto;
+    /* que quepa entera en la pantalla junto con la barra de arriba y los botones */
+    width: min(100%, calc((100vh - 260px) * 400 / 520));
+    width: min(100%, calc((100dvh - 260px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)) * 400 / 520));
+    border: 3px solid var(--borde); border-radius: 20px; box-shadow: 0 5px 0 var(--borde);
+    background: #1a1230; touch-action: none; cursor: pointer;
+  }
+  #hallazgo { position: absolute; left: 50%; transform: translateX(-50%); width: min(100% - 24px, 420px); top: 12px; z-index: 2; }
+  #hallazgo .globo { box-shadow: 0 4px 0 var(--borde); }
+  #hallazgo small { display: block; margin-top: 6px; opacity: .7; font-size: 13px; }
+  .ayuda { color: var(--suave); font-size: 14px; text-align: center; }
+
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
@@ -243,8 +266,8 @@
     <button class="btn" id="btn-jugar" type="button" style="font-size:22px;padding:18px 30px">¡Resolver un caso!</button>
     <div class="tarjeta como">
       <h3>Cómo se juega</h3>
-      <p>🏠 <b>Revisa los cuartos.</b> Toca los objetos para buscar pistas. Las pistas nunca mienten.</p>
-      <p>👻 <b>Interroga a los fantasmas.</b> Te dicen cómo era el culpable… pero el culpable siempre miente.</p>
+      <p>🕵️ <b>Eres el detective.</b> Toca los objetos del cuarto y caminas a revisarlos. Las pistas nunca mienten.</p>
+      <p>👻 <b>Los fantasmas pasean por la mansión.</b> Tócalos para platicar: te dicen cómo era el culpable… pero el culpable siempre miente.</p>
       <p>🕰️ <b>Cada cosa que haces gasta 20 minutos.</b> Al amanecer (6:00) tienes que acusar sí o sí.</p>
       <p>🕯️ <b>Tienes 3 velas.</b> Si acusas a un inocente, se apaga una. Sin velas, se acaba la partida.</p>
     </div>
@@ -262,37 +285,25 @@
       <div class="hora"><span>🌙 <span id="hora">12:00 a.m.</span></span><span id="falta">Amanece en 6 h</span></div>
       <div class="pista-sol"><i id="barra-noche" style="width:0%"></i></div>
     </div>
-    <div class="tarjeta misterio">
-      <span class="ico" id="misterio-ico">🎂</span>
-      <div><h2 id="misterio-texto">¡Alguien se comió el pastel!</h2><p style="color:var(--suave)">¿Quién fue? Solo uno de estos fantasmas es culpable.</p></div>
+    <!-- Pestañas de los cuartos (con cuántos fantasmas hay en cada uno) -->
+    <div class="pestanas" id="pestanas"></div>
+    <!-- La escena: el cuarto dibujado, los fantasmas y el detective -->
+    <div id="escenario">
+      <canvas id="lienzo" aria-label="Cuarto de la mansión. Toca objetos o fantasmas para investigar."></canvas>
+      <div id="hallazgo" hidden></div>
     </div>
-    <div class="mansion">
-      <!-- Techo de la mansión con torrecita, chimenea y luna -->
-      <svg class="techo" viewBox="0 0 400 120" aria-hidden="true">
-        <circle cx="348" cy="30" r="20" fill="#fff3c4" stroke="#120b24" stroke-width="3"/>
-        <circle cx="356" cy="24" r="16" fill="#251a40"/>
-        <rect x="70" y="18" width="26" height="50" fill="#5b4790" stroke="#120b24" stroke-width="3"/>
-        <path d="M6 118 L200 22 L394 118 Z" fill="#6b54a8" stroke="#120b24" stroke-width="3" stroke-linejoin="round"/>
-        <path d="M168 56 L200 6 L232 56 Z" fill="#8c6fd4" stroke="#120b24" stroke-width="3" stroke-linejoin="round"/>
-        <circle cx="200" cy="80" r="17" fill="#ffd04d" stroke="#120b24" stroke-width="3"/>
-        <path d="M200 63 v34 M183 80 h34" stroke="#120b24" stroke-width="3"/>
-        <path d="M60 14 q8 -8 16 0 q-4 -2 -8 2 q-4 -4 -8 -2z M110 30 q6 -6 12 0 q-3 -2 -6 1 q-3 -3 -6 -1z" fill="#120b24"/>
-      </svg>
-      <div class="cuerpo-casa" id="cuartos"></div>
-    </div>
-    <div class="titulo-seccion"><h3>Sospechosos</h3><span>Toca uno para interrogarlo</span></div>
-    <div class="sospechosos" id="sospechosos"></div>
-  </section>
-</div>
-
-<!-- Botones de abajo (solo durante el caso) -->
-<div class="acciones" id="acciones" hidden>
+    <div class="acciones" id="acciones" hidden>
   <div class="fila">
     <button class="btn secundario" id="btn-libreta" type="button">📒 Libreta</button>
     <button class="btn secundario" id="btn-pista" type="button" aria-label="Comprar una pista">💡 15</button>
     <button class="btn acusar" id="btn-acusar" type="button">👉 ¡Acusar!</button>
   </div>
 </div>
+    <p class="ayuda">👆 Toca un objeto para revisarlo, un fantasma para interrogarlo o las flechas para cambiar de cuarto.</p>
+  </section>
+</div>
+
+<!-- Botones de abajo (solo durante el caso) -->
 
 <!-- Ventana emergente reutilizable -->
 <div id="velo" hidden><div id="hoja" role="dialog" aria-modal="true"></div></div>
@@ -346,27 +357,29 @@ const tieneRasgo = (p, r) => p.rasgos.includes(r);
 const cumple = (p, h) => h.r === 'color' ? p.color === h.v : tieneRasgo(p, h.r) === h.si;   // ¿el hecho describe a p?
 
 // ---- Cuartos y sus objetos (con frases chistosas cuando no hay nada) ------
+// Cada objeto tiene su lugar en la escena (lienzo de 400 × 520):
+//   base: el mueble que se dibuja debajo; suelo: true si está en el piso (se ordena con los personajes)
 const CUARTOS = [
-  { id: 'cocina', nombre: 'Cocina', ico: '🍳', fondo: '#3f5a4c', objetos: [
-    { ico: '🍲', n: 'Olla', nada: 'Sopa de fideos. Huele rico, pero no es pista.' },
-    { ico: '🧁', n: 'Alacena', nada: 'Pura harina. Estornudaste: ¡achú!' },
-    { ico: '🫖', n: 'Tetera', nada: 'Té de manzanilla tibio. Nada raro.' },
-    { ico: '🧊', n: 'Refri', nada: 'Un flan que tiembla… de miedo.' } ] },
-  { id: 'biblioteca', nombre: 'Biblioteca', ico: '📚', fondo: '#5a3f33', objetos: [
-    { ico: '📚', n: 'Librero', nada: 'Un libro: «Cómo asustar en 3 pasos». Nada más.' },
-    { ico: '🕯️', n: 'Candelabro', nada: 'Las velas bailan solas. Normal en esta casa.' },
-    { ico: '🛋️', n: 'Sillón', nada: 'Encontraste… ¡un calcetín! No es pista.' },
-    { ico: '🌍', n: 'Globo terráqueo', nada: 'Le diste vuelta y te mareaste.' } ] },
-  { id: 'sotano', nombre: 'Sótano', ico: '🕸️', fondo: '#2f3b55', objetos: [
-    { ico: '📦', n: 'Cajas', nada: 'Adornos de Navidad… en noviembre.' },
-    { ico: '🛢️', n: 'Barril', nada: 'Huele a pepinillos. Puaj.' },
-    { ico: '🕸️', n: 'Telarañas', nada: 'Una araña te saludó con sus 8 patitas.' },
-    { ico: '🧹', n: 'Escoba', nada: 'Es una escoba normal. ¿O no? …Sí, es normal.' } ] },
-  { id: 'atico', nombre: 'Ático', ico: '🧸', fondo: '#55344f', objetos: [
-    { ico: '🧸', n: 'Osito', nada: 'Te mira raro, pero no dice nada.' },
-    { ico: '🪞', n: 'Espejo', nada: 'Te ves muy bien, detective.' },
-    { ico: '🧳', n: 'Maleta', nada: 'Ropa de 1890. Muy de moda… en 1890.' },
-    { ico: '🖼️', n: 'Cuadro', nada: 'El señor del cuadro te guiñó un ojo. Ignóralo.' } ] },
+  { id: 'cocina', nombre: 'Cocina', ico: '🍳', pared: '#4f7d68', papel: 'cuadros', piso: '#c98d5a', tipoPiso: 'baldosa', ventana: { x: 200, y: 95 }, objetos: [
+    { ico: '🍲', n: 'Olla', x: 82, y: 236, base: 'estufa', nada: 'Sopa de fideos. Huele rico, pero no es pista.' },
+    { ico: '🧁', n: 'Alacena', x: 300, y: 128, base: 'mueble', nada: 'Pura harina. Estornudaste: ¡achú!' },
+    { ico: '🫖', n: 'Tetera', x: 205, y: 368, base: 'mesa', suelo: true, nada: 'Té de manzanilla tibio. Nada raro.' },
+    { ico: '🧊', n: 'Refri', x: 352, y: 232, base: 'refri', tam: 30, nada: 'Un flan que tiembla… de miedo.' } ] },
+  { id: 'biblioteca', nombre: 'Biblioteca', ico: '📚', pared: '#7d4a3c', papel: 'rayas', piso: '#8a5a3c', tipoPiso: 'tablas', ventana: { x: 300, y: 95 }, objetos: [
+    { ico: '📚', n: 'Librero', x: 78, y: 170, base: 'librero', nada: 'Un libro: «Cómo asustar en 3 pasos». Nada más.' },
+    { ico: '🕯️', n: 'Candelabro', x: 195, y: 130, base: 'repisa', nada: 'Las velas bailan solas. Normal en esta casa.' },
+    { ico: '🛋️', n: 'Sillón', x: 300, y: 392, base: 'piso', suelo: true, tam: 70, nada: 'Encontraste… ¡un calcetín! No es pista.' },
+    { ico: '🌍', n: 'Globo terráqueo', x: 150, y: 400, base: 'mesa', suelo: true, nada: 'Le diste vuelta y te mareaste.' } ] },
+  { id: 'sotano', nombre: 'Sótano', ico: '🕸️', pared: '#3e4a68', papel: 'ladrillo', piso: '#50566a', tipoPiso: 'piedra', ventana: { x: 200, y: 50, chica: true }, objetos: [
+    { ico: '📦', n: 'Cajas', x: 88, y: 398, base: 'piso', suelo: true, tam: 60, nada: 'Adornos de Navidad… en noviembre.' },
+    { ico: '🛢️', n: 'Barril', x: 318, y: 392, base: 'piso', suelo: true, tam: 60, nada: 'Huele a pepinillos. Puaj.' },
+    { ico: '🕸️', n: 'Telarañas', x: 330, y: 105, base: 'pared', tam: 60, nada: 'Una araña te saludó con sus 8 patitas.' },
+    { ico: '🧹', n: 'Escoba', x: 120, y: 205, base: 'pared', tam: 60, nada: 'Es una escoba normal. ¿O no? …Sí, es normal.' } ] },
+  { id: 'atico', nombre: 'Ático', ico: '🧸', pared: '#6b4064', papel: 'puntos', piso: '#9a6e4a', tipoPiso: 'tablas', ventana: { x: 200, y: 95, redonda: true }, techo: true, objetos: [
+    { ico: '🧸', n: 'Osito', x: 105, y: 395, base: 'piso', suelo: true, tam: 54, nada: 'Te mira raro, pero no dice nada.' },
+    { ico: '🪞', n: 'Espejo', x: 318, y: 175, base: 'marco', nada: 'Te ves muy bien, detective.' },
+    { ico: '🧳', n: 'Maleta', x: 285, y: 425, base: 'piso', suelo: true, tam: 54, nada: 'Ropa de 1890. Muy de moda… en 1890.' },
+    { ico: '🖼️', n: 'Cuadro', x: 88, y: 175, base: 'marco', nada: 'El señor del cuadro te guiñó un ojo. Ignóralo.' } ] },
 ];
 
 // ---- Misterios de cada caso -----------------------------------------------
@@ -402,7 +415,7 @@ let caso = null;      // ver generarCaso()
 // =====================================================================
 function fantasmaSVG(p, cara = 'normal') {
   const B = '#120b24';   // contorno
-  let s = `<svg viewBox="0 -14 100 128" aria-hidden="true">`;
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" width="100" height="128" viewBox="0 -14 100 128" aria-hidden="true">`;
   // Sombra en el piso
   s += `<ellipse cx="50" cy="110" rx="26" ry="4" fill="rgba(0,0,0,.25)"/>`;
   // Cuerpo: cabeza redonda y cola con ondas
@@ -564,19 +577,7 @@ function pintar() {
   const falta = AMANECER - caso.minutos;
   $('falta').textContent = falta > 0 ? `Amanece en ${Math.floor(falta / 60)} h ${falta % 60 ? (falta % 60) + ' min' : ''}` : '¡Amaneció!';
   $('barra-noche').style.width = (caso.minutos / AMANECER) * 100 + '%';
-  $('misterio-ico').textContent = caso.ico;
-  $('misterio-texto').textContent = caso.texto;
-  // Ventanas de la mansión: cuántos objetos revisaste y si hay una pista marcada con 💡
-  $('cuartos').innerHTML = CUARTOS.map((c) => {
-    const vistos = c.objetos.filter((_, i) => caso.vistos.has(`${c.id}:${i}`)).length;
-    const marca = c.objetos.some((_, i) => caso.marcados.has(`${c.id}:${i}`) && !caso.vistos.has(`${c.id}:${i}`));
-    return `<button class="ventana" type="button" data-cuarto="${c.id}">${marca ? '<span class="brillo">✨</span>' : ''}<span class="ico">${c.ico}</span><b>${c.nombre}</b><small>${vistos}/4 revisados</small></button>`;
-  }).join('');
-  // Tarjetas de sospechosos
-  $('sospechosos').innerHTML = caso.sospechosos.map((p) => {
-    const clase = caso.tachados.has(p.id) || caso.inocentes.has(p.id) ? 'fantasma tachado' : 'fantasma';
-    return `<button class="${clase}" type="button" data-fantasma="${p.id}">${caso.interrogados.has(p.id) ? '<span class="ya">💬</span>' : ''}<span class="flota">${fantasmaSVG(p)}</span><b>${p.nombre}</b><span class="rasgos" aria-label="Rasgos">${rasgosTexto(p)}</span></button>`;
-  }).join('');
+  pintarPestanas();
   $('btn-pista').disabled = datos.monedas < PRECIO_PISTA;
 }
 
@@ -610,20 +611,7 @@ function aviso(texto) {
   document.body.appendChild(a); setTimeout(() => a.remove(), 1800);
 }
 
-// ---- Abrir un cuarto -------------------------------------------------------
-function abrirCuarto(id, hallazgo = '') {
-  const c = CUARTOS.find((x) => x.id === id);
-  const objetos = c.objetos.map((o, i) => {
-    const k = `${id}:${i}`;
-    const clase = caso.vistos.has(k) ? 'objeto visto' : 'objeto';
-    const brillo = caso.marcados.has(k) && !caso.vistos.has(k) ? '<span class="brillo">✨</span>' : '';
-    return `<button class="${clase}" type="button" data-objeto="${k}" style="--fondo-cuarto:${c.fondo}">${brillo}<span class="ico">${o.ico}</span><b>${o.n}</b></button>`;
-  }).join('');
-  abrirHoja(`${cabeza(`${c.ico} ${c.nombre}`)}${hallazgo}<div class="objetos">${objetos}</div>
-    <p class="costo">Revisar un objeto nuevo gasta ${MIN_POR_ACCION} minutos · Son las ${horaTexto(caso.minutos)}</p>`);
-}
-
-// ---- Revisar un objeto -------------------------------------------------------
+// ---- Revisar un objeto (el detective ya llegó hasta él) ----------------------
 function revisar(k) {
   const [id, i] = k.split(':');
   const c = CUARTOS.find((x) => x.id === id), o = c.objetos[+i];
@@ -631,19 +619,28 @@ function revisar(k) {
   const nuevo = !caso.vistos.has(k);
   let html;
   if (cont && cont.tipo === 'pista') {
-    html = `<div class="globo pista">🔍 <b>¡Pista en ${o.n}!</b> ${cont.h.r === 'color' ? `Una mancha de baba ${cont.h.v} en la perilla.` : RASGOS[cont.h.r][cont.h.si ? 'si' : 'no']}<strong>${conclusion(cont.h)}</strong></div>`;
+    html = `<div class="globo pista">🔍 <b>¡Pista en ${o.n}!</b> ${cont.h.r === 'color' ? `Una mancha de baba ${cont.h.v} en la perilla.` : RASGOS[cont.h.r][cont.h.si ? 'si' : 'no']}<strong>${conclusion(cont.h)}</strong><small>Quedó anotada en tu libreta.</small></div>`;
     if (nuevo) { caso.notas.push({ tipo: 'pista', h: cont.h, donde: `${c.nombre}, ${o.n}` }); Sonido.pista(); }
   } else if (cont && cont.tipo === 'moneda') {
     html = `<div class="globo monedita">🪙 ${nuevo ? `¡Una moneda olvidada en ${o.n}! +${cont.n}` : `Aquí encontraste ${cont.n} monedas.`}</div>`;
     if (nuevo) { datos.monedas += cont.n; guardar(); Sonido.moneda(); }
   } else {
-    html = `<div class="globo">${o.ico} ${o.nada}</div>`;
+    html = `<div class="globo">${o.ico} <b>${o.n}:</b> ${o.nada}</div>`;
     if (nuevo) Sonido.nada();
   }
-  if (nuevo) { caso.vistos.add(k); gastarTiempo(); } else Sonido.pop();
-  abrirCuarto(id, html);
-  if (nuevo && amanecio()) setTimeout(() => acusar(true), 1200);
+  if (nuevo) { caso.vistos.add(k); gastarTiempo(); estrellitas(o.x, o.y, cont && cont.tipo === 'pista' ? '#86e8c6' : '#ffd04d'); } else Sonido.pop();
+  mostrarHallazgo(html);
+  if (nuevo && amanecio()) setTimeout(() => acusar(true), 1400);
 }
+
+// Tarjeta del hallazgo encima de la escena (se quita sola o al tocar)
+let tHallazgo = 0;
+function mostrarHallazgo(html) {
+  $('hallazgo').innerHTML = html; $('hallazgo').hidden = false;
+  clearTimeout(tHallazgo); tHallazgo = setTimeout(ocultarHallazgo, 5000);
+}
+function ocultarHallazgo() { $('hallazgo').hidden = true; }
+$('hallazgo').addEventListener('click', ocultarHallazgo);
 
 // ---- Interrogar a un fantasma ----------------------------------------------
 function interrogar(pid) {
@@ -671,8 +668,10 @@ function abrirLibreta() {
   const ld = dichos.length ? dichos.map((n) => `<div class="nota"><span class="ico">💬</span><div>${conclusion(n.t)}<small>Lo dice ${n.p.nombre} · puede mentir</small></div></div>`).join('')
     : '<p class="vacio">Aún no interrogas a nadie.</p>';
   abrirHoja(`${cabeza('📒 Libreta')}
+    <div class="misterio-mini"><span>${caso.ico}</span><b>${caso.texto}</b></div>
     <h3>Pistas encontradas</h3><div class="libreta">${lp}</div>
     <h3>Lo que dicen los fantasmas</h3><div class="libreta">${ld}</div>
+    <h3>¿Dónde están?</h3><div class="libreta">${caso.sospechosos.map((p) => `<div class="nota"><span class="ico">👻</span><div>${p.nombre} ${rasgosTexto(p)}<small>Ahora en: ${CUARTOS.find((c) => c.id === escena.fantasmas[p.id].cuarto).nombre}</small></div></div>`).join('')}</div>
     <p class="costo">Consejo: compara a cada sospechoso con las pistas. Si alguien contradice una pista… ¡ese miente!</p>`);
 }
 
@@ -773,10 +772,364 @@ function finPartida() {
     <button class="btn secundario" type="button" data-accion="menu">Ir al inicio</button></div>`, false);
 }
 
+// =====================================================================
+// ESCENA: el cuarto dibujado, los fantasmas que pasean y el detective
+// =====================================================================
+const lienzo = $('lienzo'), g = lienzo.getContext('2d');
+// Celulares viejos sin roundRect: se dibuja como rectángulo normal
+if (!CanvasRenderingContext2D.prototype.roundRect) CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h) { this.rect(x, y, w, h); };
+const W = 400, H = 520, PISO = 285;                         // medidas lógicas; el piso empieza en y = 285
+const ZONA = { x0: 50, x1: 350, y0: 318, y1: 478 };         // donde caminan fantasmas y detective
+const BORDE = '#120b24';
+const azarEntre = (a, b) => a + Math.random() * (b - a);
+const limitar = (v, a, b) => Math.max(a, Math.min(b, v));
+let escala = 1;
+function ajustarLienzo() {
+  const ancho = lienzo.getBoundingClientRect().width;
+  if (!ancho) return;
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  lienzo.width = Math.round(ancho * dpr); lienzo.height = Math.round(ancho * dpr * H / W);
+  escala = lienzo.width / W;
+}
+window.addEventListener('resize', ajustarLienzo);
+
+// Los fantasmas se dibujan con el mismo SVG de siempre, convertido en imagen
+const imagenes = {};
+function imagenFantasma(p, cara = 'normal') {
+  const k = p.id + cara;
+  if (!imagenes[k]) { const im = new Image(); im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(fantasmaSVG(p, cara)); imagenes[k] = im; }
+  return imagenes[k];
+}
+const FRASES = ['¡Buuu!', 'La la la…', '¿Y mis llaves?', 'Qué frío hace…', '¡Uuuuh!', 'Yo no fui, eh.', '♪ fiu fiu ♪', '¿Hay pastel?', '¡Achú!', 'Zzz…'];
+const EMOJI = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+let escena = null;
+// Reparte a los fantasmas por los cuartos y pone al detective en la cocina
+function iniciarEscena() {
+  const fantasmas = {};
+  caso.sospechosos.forEach((p, i) => {
+    const x = azarEntre(ZONA.x0 + 20, ZONA.x1 - 20), y = azarEntre(ZONA.y0, ZONA.y1);
+    fantasmas[p.id] = { p, cuarto: CUARTOS[(i + 1) % CUARTOS.length].id, x, y, tx: x, ty: y,
+      espera: Math.random() * 2, fase: Math.random() * 6, tCambio: 10 + Math.random() * 25, quieto: 0, saliendo: 0, frase: null, tFrase: 0 };
+  });
+  escena = { cuarto: 'cocina', det: { x: 200, y: 450, tx: 200, ty: 450, accion: null, mira: 1, paso: 0 },
+    fantasmas, tFrase: 3, fundido: 1, flechas: [], chispas: [] };
+  ajustarLienzo();
+}
+const cuartoActual = () => CUARTOS.find((c) => c.id === escena.cuarto);
+const vecino = (dir) => CUARTOS[(CUARTOS.findIndex((c) => c.id === escena.cuarto) + dir + CUARTOS.length) % CUARTOS.length];
+
+// Cambia de cuarto: el detective entra por el lado contrario
+function cambiarCuarto(id, dir = 0) {
+  escena.cuarto = id; escena.fundido = 1;
+  const d = escena.det;
+  d.x = dir > 0 ? 40 : dir < 0 ? 360 : 200; d.y = 450;
+  d.tx = dir > 0 ? 95 : dir < 0 ? 305 : 200; d.ty = 450; d.accion = null;
+  ocultarHallazgo(); Sonido.pop(); pintarPestanas();
+}
+
+// Pestañas: cuarto actual, fantasmas que hay y ✨ si compraste una pista ahí
+let textoPestanas = '';
+function pintarPestanas() {
+  if (!escena) return;
+  const html = CUARTOS.map((c) => {
+    const n = Object.values(escena.fantasmas).filter((f) => f.cuarto === c.id).length;
+    const marca = c.objetos.some((_, i) => caso.marcados.has(`${c.id}:${i}`) && !caso.vistos.has(`${c.id}:${i}`));
+    const vistos = c.objetos.filter((_, i) => caso.vistos.has(`${c.id}:${i}`)).length;
+    return `<button class="pestana${c.id === escena.cuarto ? ' activa' : ''}" type="button" data-ir="${c.id}"><span class="ico">${c.ico}</span>${c.nombre}<span>${'👻'.repeat(n) || '·'}${marca ? '✨' : ''} ${vistos}/4</span></button>`;
+  }).join('');
+  if (html !== textoPestanas) { $('pestanas').innerHTML = html; textoPestanas = html; }
+}
+
+// ---- Movimiento ----------------------------------------------------------------
+function irA(x, y, accion) {
+  const d = escena.det;
+  d.tx = limitar(x, ZONA.x0 - 25, ZONA.x1 + 25); d.ty = limitar(y, ZONA.y0, ZONA.y1); d.accion = accion;
+}
+function actualizar(dt) {
+  const d = escena.det;
+  // El detective camina hasta su destino y luego hace lo que se le pidió
+  const dx = d.tx - d.x, dy = d.ty - d.y, dist = Math.hypot(dx, dy);
+  if (dist > 2) {
+    const v = Math.min(dist, 175 * dt);
+    d.x += dx / dist * v; d.y += dy / dist * v; d.paso += dt * 12;
+    if (Math.abs(dx) > 1) d.mira = dx > 0 ? 1 : -1;
+  } else if (d.accion) { const a = d.accion; d.accion = null; a(); }
+  // Fantasmas: flotan a puntos al azar y de vez en cuando se van a otro cuarto
+  for (const f of Object.values(escena.fantasmas)) {
+    f.fase += dt;
+    if (f.frase && (f.tFrase -= dt) <= 0) f.frase = null;
+    if (f.quieto > 0) { f.quieto -= dt; continue; }            // esperando al detective
+    f.tCambio -= dt;
+    if (f.espera > 0) { f.espera -= dt; continue; }
+    const ex = f.tx - f.x, ey = f.ty - f.y, de = Math.hypot(ex, ey);
+    if (de > 3) { const v = Math.min(de, 34 * dt); f.x += ex / de * v; f.y += ey / de * v; continue; }
+    if (f.saliendo) {                                            // llegó a la orilla: pasa al cuarto vecino
+      const i = CUARTOS.findIndex((c) => c.id === f.cuarto);
+      f.cuarto = CUARTOS[(i + f.saliendo + CUARTOS.length) % CUARTOS.length].id;
+      f.x = f.saliendo > 0 ? 25 : 375; f.saliendo = 0; f.tCambio = 18 + Math.random() * 25;
+      f.tx = azarEntre(ZONA.x0 + 20, ZONA.x1 - 20); f.ty = f.y; f.espera = 0;
+      continue;
+    }
+    f.espera = 0.6 + Math.random() * 2.2;
+    if (f.tCambio <= 0) { f.saliendo = Math.random() < 0.5 ? -1 : 1; f.tx = f.saliendo < 0 ? 22 : 378; f.ty = azarEntre(ZONA.y0 + 30, ZONA.y1 - 20); }
+    else { f.tx = azarEntre(ZONA.x0 + 20, ZONA.x1 - 20); f.ty = azarEntre(ZONA.y0, ZONA.y1); }
+  }
+  // De vez en cuando un fantasma del cuarto dice algo
+  if ((escena.tFrase -= dt) <= 0) {
+    const aqui = Object.values(escena.fantasmas).filter((f) => f.cuarto === escena.cuarto && !f.frase);
+    if (aqui.length) { const f = azar(aqui); f.frase = azar(FRASES); f.tFrase = 2.3; }
+    escena.tFrase = 3.5 + Math.random() * 4;
+  }
+  escena.chispas = escena.chispas.filter((c) => (c.vida -= dt) > 0);
+  escena.chispas.forEach((c) => { c.x += c.vx * dt; c.y += c.vy * dt; c.vy += 260 * dt; });
+  escena.fundido = Math.max(0, escena.fundido - dt * 3);
+}
+// Estrellitas al revisar algo
+function estrellitas(x, y, color) {
+  for (let i = 0; i < 14; i++) { const a = Math.random() * Math.PI * 2, v = 80 + Math.random() * 120;
+    escena.chispas.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 120, vida: 0.7 + Math.random() * 0.4, color }); }
+}
+
+// ---- Toques en la escena ----------------------------------------------------------
+lienzo.addEventListener('pointerdown', (e) => {
+  if (!escena || caso.terminado) return;
+  const r = lienzo.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * W, y = (e.clientY - r.top) / r.height * H;
+  ocultarHallazgo();
+  const d = escena.det;
+  // 1) Flechas para cambiar de cuarto
+  for (const fl of escena.flechas) {
+    if (x >= fl.x && x <= fl.x + fl.w && y >= fl.y && y <= fl.y + fl.h) {
+      irA(fl.dir < 0 ? 20 : 380, 470, () => cambiarCuarto(vecino(fl.dir).id, fl.dir)); return;
+    }
+  }
+  // 2) Fantasmas (el de más adelante primero)
+  const aqui = Object.values(escena.fantasmas).filter((f) => f.cuarto === escena.cuarto).sort((a, b) => b.y - a.y);
+  for (const f of aqui) {
+    if (Math.abs(x - f.x) < 36 && y > f.y - 100 && y < f.y + 12) {
+      f.quieto = 6; f.saliendo = 0; f.tx = f.x; f.ty = f.y;      // se queda quieto para platicar
+      const lado = d.x < f.x ? -1 : 1;
+      Sonido.pop();
+      irA(f.x + lado * 58, f.y, () => { d.mira = -lado; f.quieto = 2; interrogar(f.p.id); });
+      return;
+    }
+  }
+  // 3) Objetos del cuarto
+  const c = cuartoActual();
+  for (let i = c.objetos.length - 1; i >= 0; i--) {
+    const o = c.objetos[i];
+    if (Math.abs(x - o.x) < (o.tam || 46) * 0.9 && Math.abs(y - o.y) < (o.tam || 46) * 0.9) {
+      const k = `${c.id}:${i}`;
+      Sonido.pop();
+      const tx = o.suelo ? o.x + (d.x < o.x ? -55 : 55) : o.x, ty = o.suelo ? o.y + 40 : ZONA.y0;
+      irA(tx, ty, () => { d.mira = o.x >= d.x ? 1 : -1; revisar(k); });
+      return;
+    }
+  }
+  // 4) El piso: solo caminar
+  if (y > PISO) irA(x, y, null);
+});
+
+// ---- Dibujo ---------------------------------------------------------------------
+// Rectángulo con contorno de caricatura
+function caja(x, y, w, h, color, radio = 6) {
+  g.beginPath(); g.roundRect(x, y, w, h, radio); g.fillStyle = color; g.fill();
+  g.lineWidth = 3; g.strokeStyle = BORDE; g.stroke();
+}
+function mezcla(a, b, k) {               // mezcla dos colores #rrggbb
+  const pa = [1, 3, 5].map((i) => parseInt(a.slice(i, i + 2), 16)), pb = [1, 3, 5].map((i) => parseInt(b.slice(i, i + 2), 16));
+  return `rgb(${pa.map((v, i) => Math.round(v + (pb[i] - v) * k)).join(',')})`;
+}
+// Piedras del sótano en lugares fijos (siempre iguales)
+const PIEDRAS = Array.from({ length: 26 }, (_, i) => ({ x: (i * 97) % 400, y: PISO + 18 + ((i * 53) % 220), r: 14 + (i * 7) % 12 }));
+
+function dibujarFondo(c, t) {
+  // Pared y su tapiz
+  g.fillStyle = c.pared; g.fillRect(0, 0, W, PISO);
+  g.fillStyle = 'rgba(255,255,255,.07)';
+  if (c.papel === 'rayas') for (let x = 0; x < W; x += 36) g.fillRect(x, 0, 16, PISO);
+  if (c.papel === 'cuadros') for (let y = 0; y < PISO; y += 30) for (let x = (y / 30) % 2 * 30; x < W; x += 60) g.fillRect(x, y, 30, 30);
+  if (c.papel === 'puntos') for (let y = 15; y < PISO; y += 32) for (let x = (y / 32) % 2 * 20 + 10; x < W; x += 40) { g.beginPath(); g.arc(x, y, 4, 0, 7); g.fill(); }
+  if (c.papel === 'ladrillo') {
+    g.strokeStyle = 'rgba(0,0,0,.22)'; g.lineWidth = 2;
+    for (let y = 0, f = 0; y < PISO; y += 26, f++) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke();
+      for (let x = (f % 2) * 30; x < W; x += 60) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 26); g.stroke(); } }
+  }
+  // Ventana: el cielo se aclara mientras se acerca el amanecer
+  const k = caso.minutos / AMANECER, v = c.ventana;
+  const cielo = mezcla('#1b2350', '#ffb877', k);
+  g.save();
+  if (v.redonda) { g.beginPath(); g.arc(v.x, v.y, 44, 0, 7); g.fillStyle = cielo; g.fill(); g.lineWidth = 6; g.strokeStyle = BORDE; g.stroke(); g.clip(); }
+  else { const w = v.chica ? 90 : 96, h = v.chica ? 44 : 110; caja(v.x - w / 2, v.y - h / 2, w, h, cielo, 8); g.beginPath(); g.rect(v.x - w / 2, v.y - h / 2, w, h); g.clip(); }
+  // Luna que baja / sol que sale
+  if (k < 0.85) { g.beginPath(); g.arc(v.x + 18, v.y - 12 + k * 40, 13, 0, 7); g.fillStyle = '#fff4c7'; g.fill(); }
+  else { g.beginPath(); g.arc(v.x, v.y + 50 - (k - 0.85) * 300, 18, 0, 7); g.fillStyle = '#ffd04d'; g.fill(); }
+  g.restore();
+  if (!v.chica) {                          // cruz del marco y cortinas
+    g.strokeStyle = BORDE; g.lineWidth = 4;
+    g.beginPath(); g.moveTo(v.x, v.y - (v.redonda ? 44 : 55)); g.lineTo(v.x, v.y + (v.redonda ? 44 : 55)); g.moveTo(v.x - (v.redonda ? 44 : 48), v.y); g.lineTo(v.x + (v.redonda ? 44 : 48), v.y); g.stroke();
+    if (!v.redonda) for (const s of [-1, 1]) {
+      g.beginPath(); g.moveTo(v.x + s * 58, v.y - 62); g.quadraticCurveTo(v.x + s * 30, v.y, v.x + s * 56, v.y + 62); g.lineTo(v.x + s * 66, v.y + 62); g.lineTo(v.x + s * 66, v.y - 62); g.closePath();
+      g.fillStyle = '#c4475f'; g.fill(); g.lineWidth = 3; g.stroke();
+    }
+  }
+  // Techo inclinado del ático
+  if (c.techo) { g.fillStyle = '#3a2238'; for (const s of [0, 1]) { g.beginPath(); g.moveTo(s * W, 0); g.lineTo(s ? W - 120 : 120, 0); g.lineTo(s * W, 140); g.closePath(); g.fill(); g.strokeStyle = BORDE; g.lineWidth = 3; g.stroke(); } }
+  // Zoclo
+  g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, PISO - 10, W, 10);
+  // Piso
+  g.fillStyle = c.piso; g.fillRect(0, PISO, W, H - PISO);
+  g.strokeStyle = 'rgba(0,0,0,.18)'; g.lineWidth = 2;
+  if (c.tipoPiso === 'tablas') for (let y = PISO, h = 16; y < H; y += h, h += 4) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); }
+  if (c.tipoPiso === 'baldosa') { g.fillStyle = 'rgba(255,255,255,.12)'; for (let y = PISO, f = 0; y < H; y += 40, f++) for (let x = (f % 2) * 40; x < W; x += 80) g.fillRect(x, y, 40, 40); }
+  if (c.tipoPiso === 'piedra') { g.fillStyle = 'rgba(255,255,255,.08)'; for (const p of PIEDRAS) { g.beginPath(); g.ellipse(p.x, p.y, p.r, p.r * 0.55, 0, 0, 7); g.fill(); g.stroke(); } }
+  if (c.id === 'biblioteca') { g.beginPath(); g.ellipse(210, 425, 150, 42, 0, 0, 7); g.fillStyle = '#6d2e4f'; g.fill(); g.lineWidth = 3; g.strokeStyle = BORDE; g.stroke(); }
+  g.strokeStyle = BORDE; g.lineWidth = 3; g.beginPath(); g.moveTo(0, PISO); g.lineTo(W, PISO); g.stroke();
+  // Telarañas en las esquinas del sótano
+  if (c.id === 'sotano') { g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1.5; for (let i = 1; i <= 3; i++) { g.beginPath(); g.arc(0, 0, i * 16, 0, Math.PI / 2); g.stroke(); } g.beginPath(); g.moveTo(0, 0); g.lineTo(55, 20); g.moveTo(0, 0); g.lineTo(20, 55); g.moveTo(0, 0); g.lineTo(45, 45); g.stroke(); }
+}
+
+// Muebles debajo de cada objeto
+function dibujarBase(o) {
+  const { x, y } = o;
+  if (o.base === 'mesa') { caja(x - 46, y + 18, 92, 12, '#8b5a34', 4); caja(x - 38, y + 30, 9, 36, '#6e4426', 2); caja(x + 29, y + 30, 9, 36, '#6e4426', 2); }
+  else if (o.base === 'estufa') { caja(x - 46, y + 20, 92, 78, '#5d5f73', 6); caja(x - 30, y + 46, 60, 38, '#3b3c4c', 4); g.fillStyle = '#ff7a3d'; g.fillRect(x - 22, y + 76, 44, 4); }
+  else if (o.base === 'mueble') { caja(x - 48, y + 22, 96, 70, '#a06a3e', 6); g.strokeStyle = BORDE; g.lineWidth = 3; g.beginPath(); g.moveTo(x, y + 22); g.lineTo(x, y + 92); g.stroke(); caja(x - 9, y + 52, 5, 10, '#ffd04d', 2); caja(x + 4, y + 52, 5, 10, '#ffd04d', 2); }
+  else if (o.base === 'refri') { caja(x - 38, y - 70, 76, 168, '#e6edf7', 10); g.strokeStyle = BORDE; g.lineWidth = 3; g.beginPath(); g.moveTo(x - 38, y - 20); g.lineTo(x + 38, y - 20); g.stroke(); caja(x - 30, y - 60, 6, 28, '#9aa3b5', 3); caja(x - 30, y - 10, 6, 40, '#9aa3b5', 3); }
+  else if (o.base === 'librero') {
+    caja(x - 54, y - 85, 108, 200, '#7a4a2a', 6);
+    const lomos = ['#ff6b6b', '#4fb3e8', '#ffd04d', '#86e8c6', '#c9a6ff', '#ff9f6b'];
+    for (let f = 0; f < 4; f++) { const yy = y - 78 + f * 48; g.fillStyle = '#5a3418'; g.fillRect(x - 48, yy + 40, 96, 6);
+      if (f !== 2) for (let b = 0; b < 7; b++) { g.fillStyle = lomos[(b + f) % 6]; g.fillRect(x - 44 + b * 13, yy + 8 + (b % 3) * 3, 10, 32 - (b % 3) * 3); } }
+  }
+  else if (o.base === 'repisa') caja(x - 44, y + 24, 88, 9, '#7a4a2a', 3);
+  else if (o.base === 'marco') caja(x - 40, y - 44, 80, 88, o.n === 'Espejo' ? '#b9d8f2' : '#3d2a55', 8);
+  else if (o.base === 'piso') { g.beginPath(); g.ellipse(x, y + (o.tam || 46) * 0.45, (o.tam || 46) * 0.5, 9, 0, 0, 7); g.fillStyle = 'rgba(0,0,0,.28)'; g.fill(); }
+}
+function dibujarObjeto(c, o, i, t) {
+  const k = `${c.id}:${i}`, visto = caso.vistos.has(k);
+  dibujarBase(o);
+  // Los objetos sin revisar se mueven un poquito para invitar a tocarlos
+  const meneo = visto ? 0 : Math.sin(t * 3 + i * 1.7) * 0.06;
+  g.save(); g.translate(o.x, o.y); g.rotate(meneo);
+  g.font = `${o.tam || 46}px ${EMOJI}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.globalAlpha = visto ? 0.75 : 1;
+  g.fillStyle = '#000';                     // relleno opaco: si no, el emoji sale transparente
+  g.fillText(o.ico, 0, 0);
+  g.restore();
+  const r = (o.tam || 46) * 0.55;
+  if (visto) {                              // palomita verde: ya revisado
+    g.beginPath(); g.arc(o.x + r, o.y - r, 10, 0, 7); g.fillStyle = '#86e8c6'; g.fill(); g.lineWidth = 2.5; g.strokeStyle = BORDE; g.stroke();
+    g.fillStyle = BORDE; g.font = 'bold 13px sans-serif'; g.fillText('✓', o.x + r, o.y - r + 1);
+  } else if (caso.marcados.has(k)) {        // pista comprada con 💡
+    g.fillStyle = '#000'; g.font = `${22 + Math.sin(t * 6) * 4}px ${EMOJI}`; g.fillText('✨', o.x, o.y - r - 16);
+  } else if ((t * 0.7 + i * 0.37) % 3 < 0.25) {   // destellito de vez en cuando
+    g.fillStyle = '#fff'; g.font = 'bold 18px sans-serif'; g.fillText('✦', o.x + r * 0.8, o.y - r * 0.8);
+  }
+}
+function dibujarFantasma(f, t) {
+  const hablando = !!f.frase;
+  const flota = Math.sin(f.fase * 2.4) * 5;
+  // Al llegar a la orilla se va desvaneciendo
+  const alfa = f.saliendo ? limitar(Math.min(f.x - 15, 385 - f.x) / 40, 0, 1) : limitar(Math.min(f.x - 5, 395 - f.x) / 30, 0, 1);
+  g.save(); g.globalAlpha = alfa;
+  g.beginPath(); g.ellipse(f.x, f.y, 22 - flota, 6, 0, 0, 7); g.fillStyle = 'rgba(0,0,0,.28)'; g.fill();
+  const im = imagenFantasma(f.p, hablando ? 'feliz' : 'normal');
+  if (im.complete) g.drawImage(im, f.x - 38, f.y - 100 + flota, 76, 97);
+  // Nombre debajo
+  g.font = '700 12px "Baloo 2", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const w = g.measureText(f.p.nombre).width + 12;
+  g.fillStyle = 'rgba(18,11,36,.75)'; g.beginPath(); g.roundRect(f.x - w / 2, f.y + 6, w, 17, 8); g.fill();
+  g.fillStyle = '#fff7fd'; g.fillText(f.p.nombre, f.x, f.y + 15);
+  // Marcas: ya lo interrogaste (💬) o lo tachaste (✖)
+  if (caso.inocentes.has(f.p.id) || caso.tachados.has(f.p.id)) { g.fillStyle = '#ff86bb'; g.font = '800 26px sans-serif'; g.fillText('✖', f.x + 30, f.y - 92 + flota); }
+  else if (caso.interrogados.has(f.p.id)) { g.fillStyle = '#000'; g.font = `18px ${EMOJI}`; g.fillText('💬', f.x + 30, f.y - 90 + flota); }
+  g.restore();
+}
+function dibujarDetective(d, t) {
+  const camina = Math.hypot(d.tx - d.x, d.ty - d.y) > 2;
+  const paso = camina ? Math.sin(d.paso) : 0;
+  const rebote = camina ? Math.abs(Math.sin(d.paso)) * 3 : Math.sin(t * 3) * 1;
+  g.save(); g.translate(d.x, d.y);
+  g.beginPath(); g.ellipse(0, 0, 18, 5, 0, 0, 7); g.fillStyle = 'rgba(0,0,0,.3)'; g.fill();
+  g.scale(d.mira, 1); g.translate(0, -rebote);
+  g.lineWidth = 3; g.strokeStyle = BORDE;
+  // Piernas que se mueven al caminar
+  caja(-10 + paso * 4, -16, 8, 16, '#3b2a5c', 3); caja(2 - paso * 4, -16, 8, 16, '#3b2a5c', 3);
+  // Gabardina
+  g.beginPath(); g.moveTo(-15, -14); g.lineTo(15, -14); g.lineTo(11, -46); g.lineTo(-11, -46); g.closePath(); g.fillStyle = '#c98a4b'; g.fill(); g.stroke();
+  g.fillStyle = '#7a4a2a'; g.fillRect(-13, -28, 26, 4);
+  // Cabeza, ojos y cachete
+  g.beginPath(); g.arc(0, -58, 13, 0, 7); g.fillStyle = '#ffd6b0'; g.fill(); g.stroke();
+  g.fillStyle = BORDE; g.beginPath(); g.arc(4, -59, 2.2, 0, 7); g.arc(10, -59, 2.2, 0, 7); g.fill();
+  g.fillStyle = 'rgba(255,120,150,.5)'; g.beginPath(); g.arc(7, -53, 3, 0, 7); g.fill();
+  // Gorra de detective
+  g.beginPath(); g.ellipse(2, -67, 17, 5, 0, 0, 7); g.fillStyle = '#7a5230'; g.fill(); g.stroke();
+  g.beginPath(); g.arc(0, -68, 12, Math.PI, 0); g.fillStyle = '#9a6b3e'; g.fill(); g.stroke();
+  // Brazo con lupa
+  g.beginPath(); g.moveTo(6, -38); g.lineTo(19, -44); g.stroke();
+  g.beginPath(); g.arc(25, -50, 8, 0, 7); g.fillStyle = 'rgba(190,230,255,.6)'; g.fill(); g.strokeStyle = '#e8e2f5'; g.lineWidth = 3.5; g.stroke();
+  g.restore();
+}
+// Globito de texto encima de un fantasma
+function bocadillo(x, y, texto) {
+  g.font = '700 13px "Baloo 2", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  const w = g.measureText(texto).width + 18; x = limitar(x, w / 2 + 4, W - w / 2 - 4);
+  g.beginPath(); g.roundRect(x - w / 2, y - 14, w, 26, 12); g.fillStyle = '#fff7fd'; g.fill(); g.lineWidth = 2.5; g.strokeStyle = BORDE; g.stroke();
+  g.fillStyle = BORDE; g.fillText(texto, x, y);
+}
+// Flechas para ir al cuarto vecino
+function dibujarFlechas() {
+  escena.flechas = [];
+  g.font = '800 13px "Baloo 2", sans-serif'; g.textBaseline = 'middle';
+  for (const dir of [-1, 1]) {
+    const texto = dir < 0 ? `◀ ${vecino(-1).nombre}` : `${vecino(1).nombre} ▶`;
+    const w = g.measureText(texto).width + 20, x = dir < 0 ? 8 : W - 8 - w, y = H - 40;
+    g.beginPath(); g.roundRect(x, y, w, 30, 15); g.fillStyle = '#ffd04d'; g.fill(); g.lineWidth = 3; g.strokeStyle = BORDE; g.stroke();
+    g.fillStyle = BORDE; g.textAlign = 'center'; g.fillText(texto, x + w / 2, y + 15);
+    escena.flechas.push({ x, y, w, h: 30, dir });
+  }
+}
+function dibujar(t) {
+  g.setTransform(escala, 0, 0, escala, 0, 0);
+  const c = cuartoActual();
+  dibujarFondo(c, t);
+  c.objetos.forEach((o, i) => { if (!o.suelo) dibujarObjeto(c, o, i, t); });   // lo de la pared, atrás
+  // Lo del piso se dibuja por profundidad (lo de más abajo queda adelante)
+  const cosas = [];
+  c.objetos.forEach((o, i) => { if (o.suelo) cosas.push({ y: o.y + 30, dib: () => dibujarObjeto(c, o, i, t) }); });
+  for (const f of Object.values(escena.fantasmas)) if (f.cuarto === c.id) cosas.push({ y: f.y, dib: () => dibujarFantasma(f, t) });
+  cosas.push({ y: escena.det.y, dib: () => dibujarDetective(escena.det, t) });
+  cosas.sort((a, b) => a.y - b.y).forEach((x) => x.dib());
+  for (const f of Object.values(escena.fantasmas)) if (f.cuarto === c.id && f.frase) bocadillo(f.x, f.y - 112 + Math.sin(f.fase * 2.4) * 5, f.frase);
+  for (const ch of escena.chispas) { g.globalAlpha = Math.min(1, ch.vida * 2); g.fillStyle = ch.color; g.font = 'bold 16px sans-serif'; g.fillText('★', ch.x, ch.y); }
+  g.globalAlpha = 1;
+  // Penumbra en las orillas: luz de vela al centro
+  const sombra = g.createRadialGradient(200, 300, 140, 200, 300, 400);
+  sombra.addColorStop(0, 'rgba(12,6,28,0)'); sombra.addColorStop(1, 'rgba(12,6,28,.4)');
+  g.fillStyle = sombra; g.fillRect(0, 0, W, H);
+  dibujarFlechas();
+  if (escena.fundido > 0) { g.fillStyle = `rgba(18,11,36,${escena.fundido})`; g.fillRect(0, 0, W, H); }
+}
+
+// Bucle de animación (solo trabaja mientras se ve el caso)
+let ultimo = performance.now(), tPest = 0;
+function bucle(ahora) {
+  const dt = Math.min(0.05, (ahora - ultimo) / 1000); ultimo = ahora;
+  if (escena && !$('juego').hidden) {
+    actualizar(dt); dibujar(ahora / 1000);
+    if ((tPest -= dt) <= 0) { pintarPestanas(); tPest = 0.5; }
+  }
+  requestAnimationFrame(bucle);
+}
+requestAnimationFrame(bucle);
+
 // ---- Flujo de pantallas --------------------------------------------------------
 function nuevoCaso() {
   caso = generarCaso(partida.caso);
   $('velo').hidden = true;
+  iniciarEscena();
   pintar();
   window.scrollTo(0, 0);
   // Presentación del misterio
@@ -810,7 +1163,7 @@ document.addEventListener('click', (e) => {
   else if (b.id === 'btn-libreta') abrirLibreta();
   else if (b.id === 'btn-pista') comprarPista();
   else if (b.id === 'btn-acusar') acusar();
-  else if (d.cuarto) { Sonido.pop(); abrirCuarto(d.cuarto); }
+  else if (d.ir) { if (d.ir !== escena.cuarto) cambiarCuarto(d.ir); }
   else if (d.objeto) revisar(d.objeto);
   else if (d.fantasma) interrogar(d.fantasma);
   else if (d.tachar) { caso.tachados.has(d.tachar) ? caso.tachados.delete(d.tachar) : caso.tachados.add(d.tachar); pintar(); interrogar(d.tachar); }
