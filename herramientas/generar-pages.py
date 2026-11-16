@@ -53,3 +53,8 @@ generar('mansion/index.html', 'docs/mansion/index.html',
 # Su música (licencia libre CC0) va junto al juego
 import shutil
 shutil.copytree(raiz / 'mansion' / 'sonidos', raiz / 'docs' / 'mansion' / 'sonidos', dirs_exist_ok=True)
+
+# Escuadrón Cometa → https://verchdragon.github.io/vampiro/naves/
+generar('naves/index.html', 'docs/naves/index.html',
+        'Escuadrón Cometa: detén a la flota de aliens antes de que llegue a la Tierra.', '#070a1f')
+shutil.copytree(raiz / 'naves' / 'sonidos', raiz / 'docs' / 'naves' / 'sonidos', dirs_exist_ok=True)
