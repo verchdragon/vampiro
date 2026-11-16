@@ -9,19 +9,18 @@ Uso:  python3 herramientas/generar-pages.py
 from pathlib import Path
 
 raiz = Path(__file__).resolve().parent.parent
-juego = (raiz / 'web' / 'index.html').read_text(encoding='utf-8')
 
 cabecera = """<!doctype html>
 <html lang="es">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b0916">
+<meta name="theme-color" content="{color}">
 <!-- Permite "Agregar a pantalla de inicio" y abrir el juego a pantalla completa -->
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="description" content="VAMPIRO: sobrevive 10 noches. Juego de celular con ranking entre amigos.">
+<meta name="description" content="{descripcion}">
 <style>
   /* Lo mismo que agrega Claude al publicar: márgenes seguros del celular y reinicio básico */
   :root { color-scheme: dark; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
@@ -34,7 +33,23 @@ cabecera = """<!doctype html>
 """
 pie = "\n</body>\n</html>\n"
 
-destino = raiz / 'docs' / 'index.html'
-destino.parent.mkdir(exist_ok=True)
-destino.write_text(cabecera + juego + pie, encoding='utf-8')
-print('Generado', destino.relative_to(raiz))
+def generar(origen, destino, descripcion, color):
+    """Envuelve un juego (sin <head>) con el documento completo para GitHub Pages."""
+    juego = (raiz / origen).read_text(encoding='utf-8')
+    cab = cabecera.replace('{descripcion}', descripcion).replace('{color}', color)
+    archivo = raiz / destino
+    archivo.parent.mkdir(parents=True, exist_ok=True)
+    archivo.write_text(cab + juego + pie, encoding='utf-8')
+    print('Generado', archivo.relative_to(raiz))
+
+
+# VAMPIRO → https://verchdragon.github.io/vampiro/
+generar('web/index.html', 'docs/index.html',
+        'VAMPIRO: sobrevive 10 noches. Juego de celular con ranking entre amigos.', '#0b0916')
+
+# Mansión Embrujada → https://verchdragon.github.io/vampiro/mansion/
+generar('mansion/index.html', 'docs/mansion/index.html',
+        'Mansión Embrujada: juego de detective de caricatura. Encuentra pistas y descubre qué fantasma miente.', '#251a40')
+# Su música (licencia libre CC0) va junto al juego
+import shutil
+shutil.copytree(raiz / 'mansion' / 'sonidos', raiz / 'docs' / 'mansion' / 'sonidos', dirs_exist_ok=True)
