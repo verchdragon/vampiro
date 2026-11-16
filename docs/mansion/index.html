@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#251a40">
+<!-- Permite "Agregar a pantalla de inicio" y abrir el juego a pantalla completa -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Mansión Embrujada: juego de detective de caricatura. Encuentra pistas y descubre qué fantasma miente.">
+<style>
+  /* Lo mismo que agrega Claude al publicar: márgenes seguros del celular y reinicio básico */
+  :root { color-scheme: dark; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); box-sizing: border-box; }
+  body { margin: 0; font: 14px system-ui, sans-serif; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<title>Mansión Embrujada</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sniglet:wght@400;800&family=Baloo+2:wght@500;700&display=swap">
+<style>
+  /* Diseño: columna única de celular; mansión de caricatura con contornos gruesos
+     y sombras "de calcomanía". Un solo look nocturno y dulce (no cambia con el tema). */
+  :root {
+    --noche: #251a40;        /* fondo del cielo */
+    --noche-2: #33255c;      /* tarjetas */
+    --tinta: #fff7fd;        /* texto principal */
+    --suave: #cbbfe8;        /* texto secundario */
+    --vela: #ffd04d;         /* acento: luz de vela, botones principales */
+    --chicle: #ff86bb;       /* errores, velas perdidas */
+    --menta: #86e8c6;        /* pistas confiables */
+    --borde: #120b24;        /* contorno de caricatura */
+    --display: 'Sniglet', 'Baloo 2', 'Comic Sans MS', system-ui, sans-serif;
+    --cuerpo: 'Baloo 2', 'Trebuchet MS', system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: radial-gradient(120% 60% at 80% 0%, #3d2c6e 0%, var(--noche) 60%) fixed, var(--noche);
+    color: var(--tinta);
+    font: 500 16px/1.35 var(--cuerpo);
+    -webkit-tap-highlight-color: transparent;
+  }
+  #app {
+    max-width: 520px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 14px 110px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  h1, h2, h3 { font-family: var(--display); font-weight: 800; margin: 0; text-wrap: balance; letter-spacing: .01em; }
+  p { margin: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--vela); outline-offset: 3px; }
+
+  /* Botón de caricatura: contorno grueso y sombra que se "aplasta" al tocar */
+  .btn {
+    border: 3px solid var(--borde); border-radius: 16px;
+    background: var(--vela); color: var(--borde);
+    font: 800 18px/1 var(--display);
+    padding: 14px 18px;
+    box-shadow: 0 5px 0 var(--borde);
+    transition: transform .08s, box-shadow .08s;
+  }
+  .btn:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--borde); }
+  .btn.secundario { background: var(--noche-2); color: var(--tinta); }
+  .btn:disabled { opacity: .5; }
+
+  .tarjeta {
+    background: var(--noche-2); border: 3px solid var(--borde); border-radius: 20px;
+    box-shadow: 0 5px 0 var(--borde); padding: 14px;
+  }
+
+  /* ---- Inicio ---- */
+  #inicio { text-align: center; gap: 16px; display: flex; flex-direction: column; align-items: center; padding-top: 10px; }
+  #inicio h1 { font-size: clamp(40px, 12vw, 58px); line-height: .95; color: var(--vela); text-shadow: 0 4px 0 var(--borde), 0 0 30px rgba(255,208,77,.35); }
+  #inicio .sub { color: var(--suave); max-width: 32ch; }
+  .desfile { display: flex; justify-content: center; gap: 4px; height: 120px; }
+  .desfile svg { width: 92px; height: 112px; }
+  .stats { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  .chip { background: var(--noche-2); border: 2px solid var(--borde); border-radius: 999px; padding: 4px 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .como { text-align: left; display: grid; gap: 8px; }
+  .como b { color: var(--vela); }
+
+  /* Fantasmas que flotan */
+  .flota { animation: flotar 2.6s ease-in-out infinite; }
+  .flota:nth-child(2n) { animation-delay: -1.3s; }
+  @keyframes flotar { 50% { transform: translateY(-8px); } }
+
+  /* ---- Barra superior del caso ---- */
+  .barra { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .barra .caso { font-family: var(--display); font-weight: 800; font-size: 20px; margin-right: auto; }
+  .reloj { display: grid; gap: 4px; }
+  .reloj .hora { display: flex; justify-content: space-between; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .reloj .pista-sol { height: 12px; border-radius: 6px; border: 2px solid var(--borde); background: #1a1230; overflow: hidden; }
+  .reloj .pista-sol i { display: block; height: 100%; background: linear-gradient(90deg, #6b4fd6, #ff9f6b, var(--vela)); border-radius: 4px; transition: width .4s; }
+
+  .misterio { display: flex; gap: 12px; align-items: center; }
+  .misterio .ico { font-size: 40px; line-height: 1; }
+  .misterio h2 { font-size: 19px; }
+
+  /* ---- Mansión: techo + 4 ventanas (cuartos) ---- */
+  .mansion { position: relative; }
+  .mansion svg.techo { display: block; width: 100%; height: auto; margin-bottom: -3px; }
+  .cuerpo-casa {
+    background: #4a3a7a; border: 3px solid var(--borde); border-top: 0; border-radius: 0 0 18px 18px;
+    padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    box-shadow: 0 5px 0 var(--borde);
+  }
+  .ventana {
+    position: relative; min-width: 0;
+    border: 3px solid var(--borde); border-radius: 14px 14px 8px 8px;
+    background: linear-gradient(#ffe27f, #ffc23d); color: var(--borde);
+    padding: 10px 6px 8px; display: grid; justify-items: center; gap: 2px;
+    box-shadow: inset 0 0 0 4px rgba(255,255,255,.35), 0 4px 0 var(--borde);
+  }
+  .ventana:active { transform: translateY(3px); box-shadow: inset 0 0 0 4px rgba(255,255,255,.35), 0 1px 0 var(--borde); }
+  .ventana .ico { font-size: 34px; line-height: 1; }
+  .ventana b { font-family: var(--display); font-size: 16px; }
+  .ventana small { font-weight: 700; opacity: .75; }
+  .brillo { position: absolute; top: 4px; right: 8px; font-size: 18px; animation: titilar 1s infinite alternate; }
+  @keyframes titilar { to { opacity: .3; transform: scale(.85); } }
+
+  /* ---- Sospechosos ---- */
+  .titulo-seccion { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+  .titulo-seccion h3 { font-size: 20px; }
+  .titulo-seccion span { color: var(--suave); font-size: 14px; }
+  .sospechosos { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px; }
+  .fantasma {
+    position: relative; min-width: 0;
+    background: var(--noche-2); border: 3px solid var(--borde); border-radius: 16px;
+    box-shadow: 0 4px 0 var(--borde); padding: 6px 4px 8px;
+    display: grid; justify-items: center; gap: 2px; text-align: center;
+  }
+  .fantasma svg { width: 70px; height: 84px; }
+  .fantasma b { font-size: 13px; line-height: 1.1; }
+  .fantasma .rasgos { font-size: 15px; min-height: 20px; letter-spacing: 1px; }
+  .fantasma.tachado { opacity: .45; }
+  .fantasma.tachado::after { content: '✖'; position: absolute; top: 2px; right: 8px; color: var(--chicle); font-size: 22px; font-weight: 800; }
+  .fantasma .ya { position: absolute; top: 4px; left: 8px; font-size: 14px; }
+
+  /* Botones fijos de abajo: libreta, pista y acusar */
+  .acciones {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    padding: 12px max(16px, env(safe-area-inset-right, 0px)) calc(12px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    background: linear-gradient(transparent, var(--noche) 35%);
+  }
+  .acciones .fila { max-width: 520px; margin: 0 auto; display: grid; grid-template-columns: 1fr auto 1.2fr; gap: 10px; }
+  .acciones .btn { padding: 14px 10px; font-size: 17px; }
+  .acusar { background: var(--chicle); }
+
+  /* ---- Hoja (ventana emergente desde abajo) ---- */
+  #velo { position: fixed; inset: 0; z-index: 20; background: rgba(10,6,22,.6); display: flex; align-items: flex-end; justify-content: center; }
+  #hoja {
+    width: 100%; max-width: 560px; max-height: 88%; overflow: auto;
+    background: var(--noche-2); border: 3px solid var(--borde); border-bottom: 0;
+    border-radius: 26px 26px 0 0;
+    padding: 18px max(16px, env(safe-area-inset-right, 0px)) calc(20px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+    display: flex; flex-direction: column; gap: 14px;
+    animation: subir .22s ease-out;
+  }
+  @keyframes subir { from { transform: translateY(40px); opacity: 0; } }
+  .cabeza-hoja { display: flex; align-items: center; gap: 10px; }
+  .cabeza-hoja h2 { font-size: 24px; margin-right: auto; }
+  .cerrar { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--borde); background: var(--noche); font-size: 20px; font-weight: 800; }
+
+  /* Objetos de un cuarto */
+  .objetos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .objeto {
+    position: relative; min-width: 0;
+    border: 3px solid var(--borde); border-radius: 18px; background: var(--fondo-cuarto, #3a2c66);
+    box-shadow: 0 4px 0 var(--borde); padding: 14px 6px 10px; display: grid; justify-items: center; gap: 4px;
+  }
+  .objeto:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--borde); }
+  .objeto .ico { font-size: 44px; line-height: 1; }
+  .objeto b { font-size: 15px; }
+  .objeto.visto { opacity: .65; }
+  .objeto.visto::after { content: '✔'; position: absolute; top: 6px; left: 10px; color: var(--menta); font-weight: 800; }
+  .costo { color: var(--suave); font-size: 14px; text-align: center; }
+
+  /* Globo de texto (hallazgos y lo que dicen los fantasmas) */
+  .globo {
+    background: var(--tinta); color: var(--borde); border: 3px solid var(--borde); border-radius: 18px;
+    padding: 12px 14px; font-size: 17px; position: relative;
+    animation: pop .25s cubic-bezier(.3,1.6,.6,1);
+  }
+  .globo.pista { background: #d9fff1; }
+  .globo.monedita { background: #fff2c2; }
+  .globo strong { display: block; margin-top: 4px; }
+  @keyframes pop { from { transform: scale(.85); opacity: 0; } }
+  .interrogatorio { display: grid; grid-template-columns: 110px 1fr; gap: 12px; align-items: center; }
+  .interrogatorio svg { width: 110px; height: 132px; }
+  .interrogatorio .globo::before {          /* piquito del globo hacia el fantasma */
+    content: ''; position: absolute; left: -14px; top: 30px;
+    border: 9px solid transparent; border-right-color: var(--borde);
+  }
+
+  /* Libreta */
+  .libreta { display: grid; gap: 8px; }
+  .nota { display: grid; grid-template-columns: 28px 1fr; gap: 8px; background: var(--noche); border-radius: 14px; padding: 10px; border: 2px solid var(--borde); }
+  .nota .ico { font-size: 20px; }
+  .nota small { color: var(--suave); display: block; }
+  .nota.confiable { border-color: var(--menta); }
+  .vacio { color: var(--suave); text-align: center; padding: 8px; }
+
+  /* Resultado */
+  .resultado { text-align: center; display: grid; gap: 12px; justify-items: center; }
+  .resultado h2 { font-size: 30px; }
+  .resultado svg { width: 130px; height: 156px; }
+  .resultado .premio { font-size: 22px; font-weight: 800; color: var(--vela); }
+  .confeti { position: fixed; inset: 0; pointer-events: none; z-index: 30; overflow: hidden; }
+  .confeti i { position: absolute; top: -20px; width: 10px; height: 14px; border-radius: 3px; animation: caer 1.8s linear forwards; }
+  @keyframes caer { to { transform: translateY(110vh) rotate(720deg); } }
+
+  /* Botón de sonido (arriba a la derecha del inicio y en la barra) */
+  .mini { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--borde); background: var(--noche-2); font-size: 20px; display: grid; place-items: center; }
+
+  .aviso { position: fixed; left: 50%; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateX(-50%); z-index: 40;
+    background: var(--tinta); color: var(--borde); border: 3px solid var(--borde); border-radius: 999px; padding: 8px 16px; font-weight: 800; box-shadow: 0 4px 0 var(--borde);
+    animation: pop .25s cubic-bezier(.3,1.6,.6,1); white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div id="app">
+  <!-- Pantalla de inicio -->
+  <section id="inicio">
+    <div style="align-self: flex-end"><button class="mini" id="btn-sonido-inicio" type="button" aria-label="Silenciar">🔊</button></div>
+    <h1>Mansión<br>Embrujada</h1>
+    <p class="sub">Algo raro pasó esta noche. Los fantasmas dicen que no fueron ellos… pero uno miente.</p>
+    <div class="desfile" id="desfile" aria-hidden="true"></div>
+    <div class="stats">
+      <span class="chip">🪙 <span id="monedas-inicio">0</span></span>
+      <span class="chip">🏆 Récord: <span id="record-inicio">0</span> casos</span>
+    </div>
+    <button class="btn" id="btn-jugar" type="button" style="font-size:22px;padding:18px 30px">¡Resolver un caso!</button>
+    <div class="tarjeta como">
+      <h3>Cómo se juega</h3>
+      <p>🏠 <b>Revisa los cuartos.</b> Toca los objetos para buscar pistas. Las pistas nunca mienten.</p>
+      <p>👻 <b>Interroga a los fantasmas.</b> Te dicen cómo era el culpable… pero el culpable siempre miente.</p>
+      <p>🕰️ <b>Cada cosa que haces gasta 20 minutos.</b> Al amanecer (6:00) tienes que acusar sí o sí.</p>
+      <p>🕯️ <b>Tienes 3 velas.</b> Si acusas a un inocente, se apaga una. Sin velas, se acaba la partida.</p>
+    </div>
+  </section>
+
+  <!-- Pantalla del caso -->
+  <section id="juego" hidden>
+    <div class="barra">
+      <span class="caso" id="titulo-caso">Caso 1</span>
+      <span class="chip" id="velas" aria-label="Velas">🕯️🕯️🕯️</span>
+      <span class="chip">🪙 <span id="monedas">0</span></span>
+      <button class="mini" id="btn-sonido" type="button" aria-label="Silenciar">🔊</button>
+    </div>
+    <div class="reloj">
+      <div class="hora"><span>🌙 <span id="hora">12:00 a.m.</span></span><span id="falta">Amanece en 6 h</span></div>
+      <div class="pista-sol"><i id="barra-noche" style="width:0%"></i></div>
+    </div>
+    <div class="tarjeta misterio">
+      <span class="ico" id="misterio-ico">🎂</span>
+      <div><h2 id="misterio-texto">¡Alguien se comió el pastel!</h2><p style="color:var(--suave)">¿Quién fue? Solo uno de estos fantasmas es culpable.</p></div>
+    </div>
+    <div class="mansion">
+      <!-- Techo de la mansión con torrecita, chimenea y luna -->
+      <svg class="techo" viewBox="0 0 400 120" aria-hidden="true">
+        <circle cx="348" cy="30" r="20" fill="#fff3c4" stroke="#120b24" stroke-width="3"/>
+        <circle cx="356" cy="24" r="16" fill="#251a40"/>
+        <rect x="70" y="18" width="26" height="50" fill="#5b4790" stroke="#120b24" stroke-width="3"/>
+        <path d="M6 118 L200 22 L394 118 Z" fill="#6b54a8" stroke="#120b24" stroke-width="3" stroke-linejoin="round"/>
+        <path d="M168 56 L200 6 L232 56 Z" fill="#8c6fd4" stroke="#120b24" stroke-width="3" stroke-linejoin="round"/>
+        <circle cx="200" cy="80" r="17" fill="#ffd04d" stroke="#120b24" stroke-width="3"/>
+        <path d="M200 63 v34 M183 80 h34" stroke="#120b24" stroke-width="3"/>
+        <path d="M60 14 q8 -8 16 0 q-4 -2 -8 2 q-4 -4 -8 -2z M110 30 q6 -6 12 0 q-3 -2 -6 1 q-3 -3 -6 -1z" fill="#120b24"/>
+      </svg>
+      <div class="cuerpo-casa" id="cuartos"></div>
+    </div>
+    <div class="titulo-seccion"><h3>Sospechosos</h3><span>Toca uno para interrogarlo</span></div>
+    <div class="sospechosos" id="sospechosos"></div>
+  </section>
+</div>
+
+<!-- Botones de abajo (solo durante el caso) -->
+<div class="acciones" id="acciones" hidden>
+  <div class="fila">
+    <button class="btn secundario" id="btn-libreta" type="button">📒 Libreta</button>
+    <button class="btn secundario" id="btn-pista" type="button" aria-label="Comprar una pista">💡 15</button>
+    <button class="btn acusar" id="btn-acusar" type="button">👉 ¡Acusar!</button>
+  </div>
+</div>
+
+<!-- Ventana emergente reutilizable -->
+<div id="velo" hidden><div id="hoja" role="dialog" aria-modal="true"></div></div>
+
+<script>
+'use strict';
+// =====================================================================
+// MANSIÓN EMBRUJADA — juego de detective de caricatura
+// Cada caso: se elige un culpable al azar, se reparten pistas (que nunca mienten)
+// en los objetos de los cuartos, y cada fantasma da un testimonio (el culpable miente).
+// =====================================================================
+
+// ---- Utilidades --------------------------------------------------------
+const $ = (id) => document.getElementById(id);
+const azar = (lista) => lista[Math.floor(Math.random() * lista.length)];
+const barajar = (lista) => { const a = [...lista]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+// ---- Rasgos de los fantasmas (lo que las pistas pueden revelar) ---------
+// si/no: frase de la pista encontrada en un objeto; conclusión que se anota en la libreta.
+const RASGOS = {
+  sombrero: { emoji: '🎩', nombre: 'sombrero',
+    si: 'Una marca redonda de sombrero en el polvo.', no: 'Una telaraña bajita sigue intacta: no traía nada alto en la cabeza.' },
+  lentes: { emoji: '👓', nombre: 'lentes',
+    si: 'Un cristalito de lentes tirado en el piso.', no: 'En el espejo quedó su reflejo… y no trae lentes.' },
+  bufanda: { emoji: '🧣', nombre: 'bufanda',
+    si: 'Un hilo de lana enganchado en un clavo.', no: 'Pasó junto al rosal espinoso y no quedó ni un hilito.' },
+  mono: { emoji: '🎀', nombre: 'moño',
+    si: 'Un listón tirado junto a la puerta.', no: 'Un cepillo sin un solo listón enredado.' },
+  bigote: { emoji: '🥸', nombre: 'bigote',
+    si: 'Un pelo de bigote en la crema del pastel.', no: 'La taza de chocolate quedó limpia, sin pelitos de bigote.' },
+  cadenas: { emoji: '⛓️', nombre: 'cadenas',
+    si: 'Rayones de cadenas arrastradas en el piso.', no: 'Nadie escuchó ningún "clanc, clanc" por aquí.' },
+};
+// Conclusión corta de un hecho (para la libreta y los testimonios)
+const conclusion = (h) => h.r === 'color'
+  ? `El culpable es un fantasma ${h.v}.`
+  : h.si ? `El culpable usa ${RASGOS[h.r].nombre} ${RASGOS[h.r].emoji}.` : `El culpable NO usa ${RASGOS[h.r].nombre}.`;
+
+// ---- Personajes: color, rasgos fijos y forma de hablar --------------------
+const PERSONAJES = [
+  { id: 'bigoton', nombre: 'Don Bigotón', color: 'azul', hex: '#8cc8ff', rasgos: ['sombrero', 'bigote'], hola: 'Ejem… buenas noches, detective.' },
+  { id: 'remedios', nombre: 'Doña Remedios', color: 'verde', hex: '#8fe3a1', rasgos: ['lentes', 'bufanda'], hola: '¡Ay, mijo! ¿Ya cenaste?' },
+  { id: 'lupita', nombre: 'Lupita', color: 'rosa', hex: '#ffa6d0', rasgos: ['mono'], hola: '¡Holaaa! ¿Jugamos a las escondidas?' },
+  { id: 'tuercas', nombre: 'Profe Tuercas', color: 'amarillo', hex: '#ffe07a', rasgos: ['lentes', 'bigote'], hola: 'Interesante… muy interesante…' },
+  { id: 'chispas', nombre: 'Conde Chispas', color: 'morado', hex: '#c9a6ff', rasgos: ['sombrero', 'cadenas'], hola: '¡Buuu! ¿Te asusté? ¿No? Rayos.' },
+  { id: 'pelusa', nombre: 'Nana Pelusa', color: 'naranja', hex: '#ffb877', rasgos: ['bufanda', 'mono', 'lentes'], hola: 'Ven, siéntate, te cuento un chisme.' },
+  { id: 'cadenitas', nombre: 'Sir Cadenitas', color: 'gris', hex: '#c8cbd6', rasgos: ['cadenas', 'bufanda'], hola: 'Clanc, clanc… perdón, son mis cadenas.' },
+  { id: 'sabanas', nombre: 'Pepe Sábanas', color: 'blanco', hex: '#f6f4ff', rasgos: [], hola: 'Yo solo soy una sábana con ojos, jeje.' },
+];
+const tieneRasgo = (p, r) => p.rasgos.includes(r);
+const cumple = (p, h) => h.r === 'color' ? p.color === h.v : tieneRasgo(p, h.r) === h.si;   // ¿el hecho describe a p?
+
+// ---- Cuartos y sus objetos (con frases chistosas cuando no hay nada) ------
+const CUARTOS = [
+  { id: 'cocina', nombre: 'Cocina', ico: '🍳', fondo: '#3f5a4c', objetos: [
+    { ico: '🍲', n: 'Olla', nada: 'Sopa de fideos. Huele rico, pero no es pista.' },
+    { ico: '🧁', n: 'Alacena', nada: 'Pura harina. Estornudaste: ¡achú!' },
+    { ico: '🫖', n: 'Tetera', nada: 'Té de manzanilla tibio. Nada raro.' },
+    { ico: '🧊', n: 'Refri', nada: 'Un flan que tiembla… de miedo.' } ] },
+  { id: 'biblioteca', nombre: 'Biblioteca', ico: '📚', fondo: '#5a3f33', objetos: [
+    { ico: '📚', n: 'Librero', nada: 'Un libro: «Cómo asustar en 3 pasos». Nada más.' },
+    { ico: '🕯️', n: 'Candelabro', nada: 'Las velas bailan solas. Normal en esta casa.' },
+    { ico: '🛋️', n: 'Sillón', nada: 'Encontraste… ¡un calcetín! No es pista.' },
+    { ico: '🌍', n: 'Globo terráqueo', nada: 'Le diste vuelta y te mareaste.' } ] },
+  { id: 'sotano', nombre: 'Sótano', ico: '🕸️', fondo: '#2f3b55', objetos: [
+    { ico: '📦', n: 'Cajas', nada: 'Adornos de Navidad… en noviembre.' },
+    { ico: '🛢️', n: 'Barril', nada: 'Huele a pepinillos. Puaj.' },
+    { ico: '🕸️', n: 'Telarañas', nada: 'Una araña te saludó con sus 8 patitas.' },
+    { ico: '🧹', n: 'Escoba', nada: 'Es una escoba normal. ¿O no? …Sí, es normal.' } ] },
+  { id: 'atico', nombre: 'Ático', ico: '🧸', fondo: '#55344f', objetos: [
+    { ico: '🧸', n: 'Osito', nada: 'Te mira raro, pero no dice nada.' },
+    { ico: '🪞', n: 'Espejo', nada: 'Te ves muy bien, detective.' },
+    { ico: '🧳', n: 'Maleta', nada: 'Ropa de 1890. Muy de moda… en 1890.' },
+    { ico: '🖼️', n: 'Cuadro', nada: 'El señor del cuadro te guiñó un ojo. Ignóralo.' } ] },
+];
+
+// ---- Misterios de cada caso -----------------------------------------------
+const MISTERIOS = [
+  ['🎂', '¡Alguien se comió el pastel de cumpleaños de la abuela!'],
+  ['📿', '¡Desapareció el collar de perlas de la Duquesa!'],
+  ['🖼️', '¡Alguien les pintó bigotes a todos los cuadros!'],
+  ['🕰️', '¡Se robaron el reloj cucú y nadie sabe qué hora es!'],
+  ['🗝️', '¡Alguien escondió las llaves de la mansión!'],
+  ['🛁', '¡Alguien llenó la bañera de gelatina verde!'],
+  ['🧦', '¡Desaparecieron todos los calcetines izquierdos!'],
+  ['🎻', '¡Alguien le quitó las cuerdas al violín del abuelo!'],
+];
+
+// ---- Reglas del juego ------------------------------------------------------
+const MIN_POR_ACCION = 20;     // cada búsqueda o interrogatorio gasta 20 minutos
+const AMANECER = 360;          // de 12:00 a 6:00 = 360 minutos
+const VELAS = 3;               // vidas de la partida
+const PRECIO_PISTA = 15;       // monedas por una pista de ayuda (💡)
+
+// ---- Guardado (monedas, récord y silencio viven en el navegador) ---------
+let datos = { monedas: 0, record: 0, silencio: false };
+try { datos = { ...datos, ...JSON.parse(localStorage.getItem('mansion-datos') || '{}') }; } catch (_) {}
+const guardar = () => { try { localStorage.setItem('mansion-datos', JSON.stringify(datos)); } catch (_) {} };
+
+// ---- Estado de la partida y del caso actual -------------------------------
+let partida = null;   // { caso, velas, resueltos }
+let caso = null;      // ver generarCaso()
+
+// =====================================================================
+// Dibujo de los fantasmas (SVG de caricatura con sus accesorios)
+// cara: 'normal' | 'feliz' | 'enojado'
+// =====================================================================
+function fantasmaSVG(p, cara = 'normal') {
+  const B = '#120b24';   // contorno
+  let s = `<svg viewBox="0 -14 100 128" aria-hidden="true">`;
+  // Sombra en el piso
+  s += `<ellipse cx="50" cy="110" rx="26" ry="4" fill="rgba(0,0,0,.25)"/>`;
+  // Cuerpo: cabeza redonda y cola con ondas
+  s += `<path d="M20 56 Q20 14 50 14 Q80 14 80 56 L80 96 q-7.5 9 -15 0 q-7.5 9 -15 0 q-7.5 9 -15 0 q-7.5 9 -15 0 Z" fill="${p.hex}" stroke="${B}" stroke-width="3.5" stroke-linejoin="round"/>`;
+  s += `<path d="M28 40 Q32 24 46 21" stroke="#fff" stroke-width="4" fill="none" stroke-linecap="round" opacity=".6"/>`;   // brillo
+  // Bufanda: banda a rayas con colita
+  if (tieneRasgo(p, 'bufanda')) {
+    s += `<path d="M21 70 Q50 80 79 70 L79 79 Q50 89 21 79 Z" fill="#ff5a6e" stroke="${B}" stroke-width="3"/>`;
+    s += `<path d="M62 80 l4 20 l10 -3 l-5 -19 Z" fill="#ff5a6e" stroke="${B}" stroke-width="3" stroke-linejoin="round"/>`;
+    s += `<path d="M35 74 l-2 8 M50 77 l-1 8" stroke="#fff" stroke-width="3"/>`;
+  }
+  // Ojos (y cejas si está enojado) y cachetes
+  if (cara === 'feliz') {
+    s += `<path d="M34 50 q6 -7 12 0 M54 50 q6 -7 12 0" stroke="${B}" stroke-width="4" fill="none" stroke-linecap="round"/>`;
+  } else {
+    s += `<ellipse cx="40" cy="50" rx="5.5" ry="7.5" fill="${B}"/><ellipse cx="60" cy="50" rx="5.5" ry="7.5" fill="${B}"/>`;
+    s += `<circle cx="42" cy="47" r="2" fill="#fff"/><circle cx="62" cy="47" r="2" fill="#fff"/>`;
+  }
+  if (cara === 'enojado') s += `<path d="M32 38 l13 5 M68 38 l-13 5" stroke="${B}" stroke-width="4" stroke-linecap="round"/>`;
+  s += `<circle cx="31" cy="60" r="4.5" fill="#ff7aa8" opacity=".55"/><circle cx="69" cy="60" r="4.5" fill="#ff7aa8" opacity=".55"/>`;
+  // Lentes redondos
+  if (tieneRasgo(p, 'lentes')) {
+    s += `<circle cx="40" cy="50" r="10" fill="rgba(255,255,255,.18)" stroke="${B}" stroke-width="3"/><circle cx="60" cy="50" r="10" fill="rgba(255,255,255,.18)" stroke="${B}" stroke-width="3"/><path d="M50 49 h0" stroke="${B}" stroke-width="3"/><path d="M48 48 q2 -2 4 0" stroke="${B}" stroke-width="3" fill="none"/>`;
+  }
+  // Bigote
+  if (tieneRasgo(p, 'bigote')) {
+    s += `<path d="M50 61 q-6 -5 -14 -1 q-5 3 -9 0 q3 8 12 6 q7 -1 11 -5 q4 4 11 5 q9 2 12 -6 q-4 3 -9 0 q-8 -4 -14 1z" fill="${B}"/>`;
+  }
+  // Boca
+  if (cara === 'enojado') s += `<path d="M43 70 q7 -6 14 0" stroke="${B}" stroke-width="3.5" fill="none" stroke-linecap="round"/>`;
+  else if (!tieneRasgo(p, 'bigote')) s += `<path d="M43 64 q7 7 14 0" stroke="${B}" stroke-width="3.5" fill="${cara === 'feliz' ? '#ff6f8f' : 'none'}" stroke-linecap="round"/>`;
+  // Sombrero de copa
+  if (tieneRasgo(p, 'sombrero')) {
+    s += `<rect x="28" y="16" width="44" height="7" rx="3" fill="#2b2140" stroke="${B}" stroke-width="3"/>`;
+    s += `<rect x="36" y="-10" width="28" height="28" rx="3" fill="#2b2140" stroke="${B}" stroke-width="3"/>`;
+    s += `<rect x="36" y="9" width="28" height="6" fill="#ff5a6e" stroke="${B}" stroke-width="2"/>`;
+  }
+  // Moño en la cabeza
+  if (tieneRasgo(p, 'mono')) {
+    s += `<path d="M68 20 l-12 -9 l2 15 Z M68 20 l13 -7 l-3 15 Z" fill="#ff4fa0" stroke="${B}" stroke-width="3" stroke-linejoin="round"/><circle cx="68" cy="20" r="4" fill="#ff4fa0" stroke="${B}" stroke-width="3"/>`;
+  }
+  // Cadenas con bola
+  if (tieneRasgo(p, 'cadenas')) {
+    s += `<g fill="none" stroke="#6f6a85" stroke-width="3.5"><ellipse cx="22" cy="88" rx="5" ry="3.5"/><ellipse cx="15" cy="94" rx="3.5" ry="5"/><ellipse cx="12" cy="102" rx="5" ry="3.5"/></g><circle cx="10" cy="106" r="7" fill="#4a4560" stroke="${B}" stroke-width="3"/>`;
+  }
+  return s + '</svg>';
+}
+const rasgosTexto = (p) => p.rasgos.map((r) => RASGOS[r].emoji).join('') || '—';
+
+// =====================================================================
+// Sonido: efectos sintetizados y música de licencia libre (CC0, Kenney)
+// =====================================================================
+const Sonido = {
+  ctx: null, buf: null, fuente: null, volMusica: null,
+  iniciar() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    this.ctx = new AC();
+    this.maestro = this.ctx.createGain(); this.maestro.gain.value = datos.silencio ? 0 : 0.8; this.maestro.connect(this.ctx.destination);
+    this.volMusica = this.ctx.createGain(); this.volMusica.gain.value = 0.35; this.volMusica.connect(this.maestro);
+    // La música se descarga aparte; si falla, el juego sigue con los efectos
+    fetch('sonidos/musica.mp3').then((r) => r.ok ? r.arrayBuffer() : Promise.reject())
+      .then((d) => new Promise((ok, mal) => this.ctx.decodeAudioData(d, ok, mal)))
+      .then((b) => { this.buf = b; this.musica(); }).catch(() => {});
+  },
+  musica() {                               // música en bucle
+    if (!this.buf || this.fuente) return;
+    this.fuente = this.ctx.createBufferSource(); this.fuente.buffer = this.buf; this.fuente.loop = true;
+    this.fuente.connect(this.volMusica); this.fuente.start();
+  },
+  alternar() {                             // silenciar / activar
+    datos.silencio = !datos.silencio; guardar();
+    if (this.ctx) this.maestro.gain.setTargetAtTime(datos.silencio ? 0 : 0.8, this.ctx.currentTime, 0.05);
+    pintarSonido();
+  },
+  // Nota con envolvente rápida (sonido de caricatura)
+  nota(f, dur, { tipo = 'triangle', vol = 0.25, cuando = 0, hasta = null } = {}) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + cuando, o = this.ctx.createOscillator(), g = this.ctx.createGain();
+    o.type = tipo; o.frequency.setValueAtTime(f, t);
+    if (hasta) o.frequency.exponentialRampToValueAtTime(hasta, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(this.maestro); o.start(t); o.stop(t + dur + 0.05);
+  },
+  pop() { this.nota(500, 0.12, { hasta: 900, vol: 0.2 }); },                       // tocar un objeto
+  nada() { this.nota(300, 0.18, { hasta: 200, vol: 0.15 }); },                     // no había nada
+  pista() { [660, 880, 1320].forEach((f, i) => this.nota(f, 0.25, { vol: 0.18, cuando: i * 0.08 })); },
+  moneda() { this.nota(1300, 0.08, { tipo: 'square', vol: 0.06 }); this.nota(1750, 0.2, { tipo: 'square', vol: 0.06, cuando: 0.07 }); },
+  fantasma() { this.nota(420, 0.5, { tipo: 'sine', hasta: 620, vol: 0.18 }); this.nota(430, 0.5, { tipo: 'sine', hasta: 640, vol: 0.12, cuando: 0.05 }); },   // "uuuh"
+  error() { this.nota(180, 0.35, { tipo: 'sawtooth', hasta: 90, vol: 0.12 }); },
+  ganar() { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => this.nota(f, 0.22, { tipo: 'square', vol: 0.07, cuando: i * 0.11 })); },
+  campana() { [880, 660].forEach((f, i) => this.nota(f, 0.6, { tipo: 'sine', vol: 0.2, cuando: i * 0.35 })); },
+};
+function pintarSonido() {
+  for (const id of ['btn-sonido', 'btn-sonido-inicio']) {
+    $(id).textContent = datos.silencio ? '🔇' : '🔊';
+    $(id).setAttribute('aria-label', datos.silencio ? 'Activar sonido' : 'Silenciar');
+  }
+}
+// El navegador solo deja sonar audio después del primer toque
+document.addEventListener('pointerdown', () => Sonido.iniciar(), true);
+$('btn-sonido').addEventListener('click', () => Sonido.alternar());
+$('btn-sonido-inicio').addEventListener('click', () => Sonido.alternar());
+
+// =====================================================================
+// Generar un caso nuevo
+// =====================================================================
+function generarCaso(n) {
+  // Más sospechosos en casos avanzados: 4, 4, 5, 5, 6…
+  const cuantos = Math.min(6, 4 + Math.floor((n - 1) / 2));
+  const sospechosos = barajar(PERSONAJES).slice(0, cuantos);
+  const culpable = azar(sospechosos);
+  // Hechos verdaderos sobre el culpable (un rasgo que tiene o que no tiene)
+  const verdaderos = barajar(Object.keys(RASGOS).map((r) => ({ r, si: tieneRasgo(culpable, r) })));
+  // Elegir pistas hasta que solo quede el culpable (cada pista debe descartar a alguien)
+  const pistas = [];
+  let quedan = sospechosos;
+  for (const h of verdaderos) {
+    if (quedan.length <= 1) break;
+    const despues = quedan.filter((p) => cumple(p, h));
+    if (despues.length < quedan.length) { pistas.push(h); quedan = despues; }
+  }
+  if (quedan.length > 1) { const h = { r: 'color', v: culpable.color }; pistas.push(h); }   // último recurso: el color
+  // Una pista de más (verdadera) por si no encuentras todas
+  const extra = verdaderos.find((h) => !pistas.some((x) => x.r === h.r));
+  if (extra) pistas.push(extra);
+  // Repartir las pistas y un par de monedas en objetos al azar
+  const lugares = barajar(CUARTOS.flatMap((c) => c.objetos.map((_, i) => `${c.id}:${i}`)));
+  const contenido = {};
+  pistas.forEach((h, i) => { contenido[lugares[i]] = { tipo: 'pista', h }; });
+  contenido[lugares[pistas.length]] = { tipo: 'moneda', n: 3 };
+  contenido[lugares[pistas.length + 1]] = { tipo: 'moneda', n: 5 };
+  // Testimonios: los inocentes dicen algo cierto del culpable; el culpable miente
+  const testimonios = {};
+  for (const p of sospechosos) {
+    if (p === culpable) {
+      const r = azar(Object.keys(RASGOS));
+      testimonios[p.id] = { r, si: !tieneRasgo(culpable, r) };   // al revés de la verdad
+    } else {
+      testimonios[p.id] = azar(verdaderos);
+    }
+  }
+  const [ico, texto] = azar(MISTERIOS);
+  return { n, sospechosos, culpable, contenido, testimonios, ico, texto,
+    minutos: 0, vistos: new Set(), interrogados: new Set(), tachados: new Set(), inocentes: new Set(),
+    marcados: new Set(), notas: [] };
+}
+
+// =====================================================================
+// Pintar la pantalla del caso
+// =====================================================================
+const horaTexto = (m) => { const h = Math.floor(m / 60), mm = String(m % 60).padStart(2, '0'); return `${h === 0 ? 12 : h}:${mm} a.m.`; };
+function pintar() {
+  $('titulo-caso').textContent = `Caso ${caso.n}`;
+  $('velas').textContent = '🕯️'.repeat(partida.velas) + '🫥'.repeat(VELAS - partida.velas);
+  $('monedas').textContent = datos.monedas;
+  $('hora').textContent = horaTexto(caso.minutos);
+  const falta = AMANECER - caso.minutos;
+  $('falta').textContent = falta > 0 ? `Amanece en ${Math.floor(falta / 60)} h ${falta % 60 ? (falta % 60) + ' min' : ''}` : '¡Amaneció!';
+  $('barra-noche').style.width = (caso.minutos / AMANECER) * 100 + '%';
+  $('misterio-ico').textContent = caso.ico;
+  $('misterio-texto').textContent = caso.texto;
+  // Ventanas de la mansión: cuántos objetos revisaste y si hay una pista marcada con 💡
+  $('cuartos').innerHTML = CUARTOS.map((c) => {
+    const vistos = c.objetos.filter((_, i) => caso.vistos.has(`${c.id}:${i}`)).length;
+    const marca = c.objetos.some((_, i) => caso.marcados.has(`${c.id}:${i}`) && !caso.vistos.has(`${c.id}:${i}`));
+    return `<button class="ventana" type="button" data-cuarto="${c.id}">${marca ? '<span class="brillo">✨</span>' : ''}<span class="ico">${c.ico}</span><b>${c.nombre}</b><small>${vistos}/4 revisados</small></button>`;
+  }).join('');
+  // Tarjetas de sospechosos
+  $('sospechosos').innerHTML = caso.sospechosos.map((p) => {
+    const clase = caso.tachados.has(p.id) || caso.inocentes.has(p.id) ? 'fantasma tachado' : 'fantasma';
+    return `<button class="${clase}" type="button" data-fantasma="${p.id}">${caso.interrogados.has(p.id) ? '<span class="ya">💬</span>' : ''}<span class="flota">${fantasmaSVG(p)}</span><b>${p.nombre}</b><span class="rasgos" aria-label="Rasgos">${rasgosTexto(p)}</span></button>`;
+  }).join('');
+  $('btn-pista').disabled = datos.monedas < PRECIO_PISTA;
+}
+
+// Gastar tiempo; si llega el amanecer, hay que acusar
+function gastarTiempo() {
+  caso.minutos = Math.min(AMANECER, caso.minutos + MIN_POR_ACCION);
+  pintar();
+}
+const amanecio = () => caso.minutos >= AMANECER;
+
+// =====================================================================
+// Ventana emergente (hoja)
+// =====================================================================
+let hojaCerrable = true;
+function abrirHoja(html, cerrable = true) {
+  hojaCerrable = cerrable;
+  $('hoja').innerHTML = html;
+  $('velo').hidden = false;
+}
+function cerrarHoja() {
+  if (!hojaCerrable) return;
+  $('velo').hidden = true;
+  if (caso && amanecio() && !caso.terminado) acusar(true);   // al amanecer ya no se puede seguir buscando
+}
+$('velo').addEventListener('click', (e) => { if (e.target === $('velo')) cerrarHoja(); });
+window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('velo').hidden) cerrarHoja(); });
+const cabeza = (titulo, cerrable = true) => `<div class="cabeza-hoja"><h2>${titulo}</h2>${cerrable ? '<button class="cerrar" type="button" data-accion="cerrar" aria-label="Cerrar">✕</button>' : ''}</div>`;
+
+function aviso(texto) {
+  const a = document.createElement('div'); a.className = 'aviso'; a.textContent = texto;
+  document.body.appendChild(a); setTimeout(() => a.remove(), 1800);
+}
+
+// ---- Abrir un cuarto -------------------------------------------------------
+function abrirCuarto(id, hallazgo = '') {
+  const c = CUARTOS.find((x) => x.id === id);
+  const objetos = c.objetos.map((o, i) => {
+    const k = `${id}:${i}`;
+    const clase = caso.vistos.has(k) ? 'objeto visto' : 'objeto';
+    const brillo = caso.marcados.has(k) && !caso.vistos.has(k) ? '<span class="brillo">✨</span>' : '';
+    return `<button class="${clase}" type="button" data-objeto="${k}" style="--fondo-cuarto:${c.fondo}">${brillo}<span class="ico">${o.ico}</span><b>${o.n}</b></button>`;
+  }).join('');
+  abrirHoja(`${cabeza(`${c.ico} ${c.nombre}`)}${hallazgo}<div class="objetos">${objetos}</div>
+    <p class="costo">Revisar un objeto nuevo gasta ${MIN_POR_ACCION} minutos · Son las ${horaTexto(caso.minutos)}</p>`);
+}
+
+// ---- Revisar un objeto -------------------------------------------------------
+function revisar(k) {
+  const [id, i] = k.split(':');
+  const c = CUARTOS.find((x) => x.id === id), o = c.objetos[+i];
+  const cont = caso.contenido[k];
+  const nuevo = !caso.vistos.has(k);
+  let html;
+  if (cont && cont.tipo === 'pista') {
+    html = `<div class="globo pista">🔍 <b>¡Pista en ${o.n}!</b> ${cont.h.r === 'color' ? `Una mancha de baba ${cont.h.v} en la perilla.` : RASGOS[cont.h.r][cont.h.si ? 'si' : 'no']}<strong>${conclusion(cont.h)}</strong></div>`;
+    if (nuevo) { caso.notas.push({ tipo: 'pista', h: cont.h, donde: `${c.nombre}, ${o.n}` }); Sonido.pista(); }
+  } else if (cont && cont.tipo === 'moneda') {
+    html = `<div class="globo monedita">🪙 ${nuevo ? `¡Una moneda olvidada en ${o.n}! +${cont.n}` : `Aquí encontraste ${cont.n} monedas.`}</div>`;
+    if (nuevo) { datos.monedas += cont.n; guardar(); Sonido.moneda(); }
+  } else {
+    html = `<div class="globo">${o.ico} ${o.nada}</div>`;
+    if (nuevo) Sonido.nada();
+  }
+  if (nuevo) { caso.vistos.add(k); gastarTiempo(); } else Sonido.pop();
+  abrirCuarto(id, html);
+  if (nuevo && amanecio()) setTimeout(() => acusar(true), 1200);
+}
+
+// ---- Interrogar a un fantasma ----------------------------------------------
+function interrogar(pid) {
+  const p = caso.sospechosos.find((x) => x.id === pid);
+  const t = caso.testimonios[pid];
+  const nuevo = !caso.interrogados.has(pid);
+  const dicho = t.si ? `¡Yo lo vi! El culpable llevaba ${RASGOS[t.r].nombre} ${RASGOS[t.r].emoji}.` : `Te lo juro: el culpable NO llevaba ${RASGOS[t.r].nombre}.`;
+  if (nuevo) { caso.interrogados.add(pid); caso.notas.push({ tipo: 'dicho', p, t }); gastarTiempo(); Sonido.fantasma(); }
+  const tachado = caso.tachados.has(pid);
+  abrirHoja(`${cabeza(p.nombre)}
+    <div class="interrogatorio"><span class="flota">${fantasmaSVG(p)}</span>
+      <div class="globo">${p.hola}<br>${dicho}</div></div>
+    <p class="costo">Usa: ${p.rasgos.map((r) => RASGOS[r].emoji + ' ' + RASGOS[r].nombre).join(', ') || 'nada, ni un accesorio'} · Color ${p.color}</p>
+    ${caso.inocentes.has(pid) ? '<p class="costo">Ya sabes que es inocente.</p>' : `<button class="btn secundario" type="button" data-tachar="${pid}">${tachado ? '↩️ Quitar la tachita' : '✖ Tachar: no creo que sea'}</button>`}
+    <p class="costo">${nuevo ? `Interrogar gastó ${MIN_POR_ACCION} minutos.` : 'Volver a escucharlo no gasta tiempo.'} Ojo: el culpable siempre miente.</p>`);
+  if (nuevo && amanecio()) setTimeout(() => acusar(true), 1500);
+}
+
+// ---- Libreta: lo que sabes ---------------------------------------------------
+function abrirLibreta() {
+  const pistas = caso.notas.filter((n) => n.tipo === 'pista');
+  const dichos = caso.notas.filter((n) => n.tipo === 'dicho');
+  const lp = pistas.length ? pistas.map((n) => `<div class="nota confiable"><span class="ico">🔍</span><div>${conclusion(n.h)}<small>${n.donde} · las pistas no mienten</small></div></div>`).join('')
+    : '<p class="vacio">Aún no encuentras pistas. Revisa los cuartos.</p>';
+  const ld = dichos.length ? dichos.map((n) => `<div class="nota"><span class="ico">💬</span><div>${conclusion(n.t)}<small>Lo dice ${n.p.nombre} · puede mentir</small></div></div>`).join('')
+    : '<p class="vacio">Aún no interrogas a nadie.</p>';
+  abrirHoja(`${cabeza('📒 Libreta')}
+    <h3>Pistas encontradas</h3><div class="libreta">${lp}</div>
+    <h3>Lo que dicen los fantasmas</h3><div class="libreta">${ld}</div>
+    <p class="costo">Consejo: compara a cada sospechoso con las pistas. Si alguien contradice una pista… ¡ese miente!</p>`);
+}
+
+// ---- Pista de ayuda (💡): marca con ✨ un objeto que guarda una pista -------
+function comprarPista() {
+  if (datos.monedas < PRECIO_PISTA) return aviso('Te faltan monedas');
+  const libres = Object.keys(caso.contenido).filter((k) => caso.contenido[k].tipo === 'pista' && !caso.vistos.has(k) && !caso.marcados.has(k));
+  if (!libres.length) return aviso('Ya no quedan pistas escondidas');
+  const k = azar(libres);
+  caso.marcados.add(k);
+  datos.monedas -= PRECIO_PISTA; guardar();
+  Sonido.pista();
+  const cuarto = CUARTOS.find((c) => c.id === k.split(':')[0]);
+  aviso(`✨ Hay una pista en: ${cuarto.nombre}`);
+  pintar();
+}
+
+// ---- Acusar ------------------------------------------------------------------
+function acusar(forzado = false) {
+  const lista = caso.sospechosos.filter((p) => !caso.inocentes.has(p.id));
+  if (forzado) Sonido.campana();
+  abrirHoja(`${cabeza(forzado ? '🌅 ¡Ya amaneció!' : '👉 ¿Quién fue?', !forzado)}
+    <p>${forzado ? 'Se acabó la noche. Tienes que acusar a alguien ahora mismo.' : 'Toca al fantasma que crees que es culpable. Si te equivocas, se apaga una vela.'}</p>
+    <div class="sospechosos">${lista.map((p) => `<button class="${caso.tachados.has(p.id) ? 'fantasma tachado' : 'fantasma'}" type="button" data-acusar="${p.id}">${fantasmaSVG(p)}<b>${p.nombre}</b><span class="rasgos">${rasgosTexto(p)}</span></button>`).join('')}</div>`, !forzado);
+}
+function confirmarAcusacion(pid) {
+  const p = caso.sospechosos.find((x) => x.id === pid);
+  abrirHoja(`${cabeza('¿Seguro?', !amanecio())}
+    <div class="interrogatorio"><span class="flota">${fantasmaSVG(p, 'enojado')}</span><div class="globo">¿Yo? ¿${p.nombre}? ¡Qué atrevimiento!</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <button class="btn secundario" type="button" data-accion="${amanecio() ? 'acusar-forzado' : 'acusar'}">Mejor no</button>
+      <button class="btn acusar" type="button" data-sentencia="${pid}">¡Fue ${p.nombre.split(' ').pop()}!</button>
+    </div>`, false);
+}
+function sentenciar(pid) {
+  const p = caso.sospechosos.find((x) => x.id === pid);
+  hojaCerrable = true;
+  if (p === caso.culpable) {
+    // ¡Acertaste! Premio: base + horas que sobraron + racha
+    const horas = Math.floor((AMANECER - caso.minutos) / 60);
+    const premio = 10 + horas * 3 + (partida.resueltos >= 2 ? 5 : 0);
+    datos.monedas += premio;
+    partida.resueltos++;
+    datos.record = Math.max(datos.record, partida.resueltos);
+    guardar();
+    caso.terminado = true;
+    Sonido.ganar(); confeti();
+    // Explicación: quién mintió
+    const mentira = caso.testimonios[p.id];
+    abrirHoja(`<div class="resultado"><h2>¡Caso resuelto! 🎉</h2>${fantasmaSVG(p, 'enojado')}
+      <p><b>${p.nombre}</b> fue el culpable. Te había dicho: "${conclusion(mentira)}"… ¡y era mentira!</p>
+      <p class="premio">+${premio} 🪙</p>
+      <p class="costo">Te sobraron ${horas} h antes del amanecer (+${horas * 3}).</p>
+      <button class="btn" type="button" data-accion="siguiente">Siguiente caso →</button></div>`, false);
+    pintar();
+  } else {
+    // Inocente: se apaga una vela
+    partida.velas--;
+    caso.inocentes.add(pid);
+    Sonido.error();
+    pintar();
+    if (partida.velas <= 0) return finPartida();
+    if (amanecio()) {
+      // Al amanecer no hay segunda oportunidad: el culpable se escapa
+      caso.terminado = true;
+      return abrirHoja(`<div class="resultado"><h2>¡Se escapó! 💨</h2>${fantasmaSVG(caso.culpable, 'feliz')}
+        <p>Era <b>${caso.culpable.nombre}</b>. ${p.nombre} era inocente y se apagó una vela.</p>
+        <button class="btn" type="button" data-accion="siguiente">Siguiente caso →</button></div>`, false);
+    }
+    abrirHoja(`<div class="resultado"><h2>¡Yo no fui! 😤</h2>${fantasmaSVG(p, 'enojado')}
+      <p><b>${p.nombre}</b> es inocente. Se apagó una vela 🕯️. Te quedan ${partida.velas}.</p>
+      <button class="btn" type="button" data-accion="cerrar">Seguir investigando</button></div>`);
+  }
+}
+
+// Confeti de colores al resolver un caso
+function confeti() {
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const capa = document.createElement('div'); capa.className = 'confeti';
+  const colores = ['#ffd04d', '#ff86bb', '#86e8c6', '#8cc8ff', '#c9a6ff'];
+  for (let i = 0; i < 40; i++) {
+    const c = document.createElement('i');
+    c.style.left = Math.random() * 100 + '%'; c.style.background = azar(colores);
+    c.style.animationDelay = Math.random() * 0.5 + 's';
+    capa.appendChild(c);
+  }
+  document.body.appendChild(capa); setTimeout(() => capa.remove(), 2600);
+}
+
+// ---- Fin de partida -------------------------------------------------------------
+function finPartida() {
+  caso.terminado = true;
+  abrirHoja(`<div class="resultado"><h2>Se apagaron las velas 🕯️</h2>${fantasmaSVG(caso.culpable, 'feliz')}
+    <p>En este caso era <b>${caso.culpable.nombre}</b>.</p>
+    <p class="premio">Resolviste ${partida.resueltos} ${partida.resueltos === 1 ? 'caso' : 'casos'}</p>
+    <p class="costo">Tu récord: ${datos.record} · Monedas: ${datos.monedas} 🪙</p>
+    <button class="btn" type="button" data-accion="otra">Jugar otra vez</button>
+    <button class="btn secundario" type="button" data-accion="menu">Ir al inicio</button></div>`, false);
+}
+
+// ---- Flujo de pantallas --------------------------------------------------------
+function nuevoCaso() {
+  caso = generarCaso(partida.caso);
+  $('velo').hidden = true;
+  pintar();
+  window.scrollTo(0, 0);
+  // Presentación del misterio
+  abrirHoja(`<div class="resultado"><span style="font-size:60px;line-height:1">${caso.ico}</span><h2>Caso ${caso.n}</h2>
+    <p style="font-size:19px">${caso.texto}</p>
+    <p class="costo">Sospechosos: ${caso.sospechosos.map((p) => p.nombre).join(', ')}.<br>Tienes hasta las 6:00 a.m.</p>
+    <button class="btn" type="button" data-accion="cerrar">¡A investigar! 🔍</button></div>`);
+}
+function empezarPartida() {
+  partida = { caso: 1, velas: VELAS, resueltos: 0 };
+  $('inicio').hidden = true; $('juego').hidden = false; $('acciones').hidden = false;
+  nuevoCaso();
+}
+function irAlInicio() {
+  hojaCerrable = true; $('velo').hidden = true;
+  $('juego').hidden = true; $('acciones').hidden = true; $('inicio').hidden = false;
+  pintarInicio();
+}
+function pintarInicio() {
+  $('monedas-inicio').textContent = datos.monedas;
+  $('record-inicio').textContent = datos.record;
+  $('desfile').innerHTML = ['lupita', 'chispas', 'remedios'].map((id) => `<span class="flota">${fantasmaSVG(PERSONAJES.find((p) => p.id === id), 'feliz')}</span>`).join('');
+}
+
+// ---- Toques (un solo manejador para todo) -----------------------------------------
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b || b.disabled) return;
+  const d = b.dataset;
+  if (b.id === 'btn-jugar') { Sonido.pop(); empezarPartida(); }
+  else if (b.id === 'btn-libreta') abrirLibreta();
+  else if (b.id === 'btn-pista') comprarPista();
+  else if (b.id === 'btn-acusar') acusar();
+  else if (d.cuarto) { Sonido.pop(); abrirCuarto(d.cuarto); }
+  else if (d.objeto) revisar(d.objeto);
+  else if (d.fantasma) interrogar(d.fantasma);
+  else if (d.tachar) { caso.tachados.has(d.tachar) ? caso.tachados.delete(d.tachar) : caso.tachados.add(d.tachar); pintar(); interrogar(d.tachar); }
+  else if (d.acusar) confirmarAcusacion(d.acusar);
+  else if (d.sentencia) sentenciar(d.sentencia);
+  else if (d.accion === 'cerrar') cerrarHoja();
+  else if (d.accion === 'acusar') acusar();
+  else if (d.accion === 'acusar-forzado') acusar(true);
+  else if (d.accion === 'siguiente') { partida.caso++; nuevoCaso(); }
+  else if (d.accion === 'otra') empezarPartida();
+  else if (d.accion === 'menu') irAlInicio();
+});
+
+// Arranque
+pintarSonido();
+pintarInicio();
+</script>
+
+</body>
+</html>
