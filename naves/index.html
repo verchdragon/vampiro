@@ -1,0 +1,736 @@
+<title>Escuadrón Cometa</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Russo+One&family=Exo+2:wght@500;700&display=swap">
+<style>
+  /* Diseño: pantalla de juego vertical a todo lo alto, centrada; espacio profundo
+     azul-morado con neón cian (tu nave) y magenta (los aliens). Un solo look oscuro. */
+  :root {
+    --espacio: #070a1f;      /* fondo */
+    --panel: #121838;        /* paneles de menú */
+    --texto: #eef3ff;        /* texto */
+    --tenue: #9aa6d6;        /* texto secundario */
+    --cian: #5ef2ff;         /* acento: la nave del jugador */
+    --magenta: #ff5fd2;      /* aliens y peligro */
+    --oro: #ffd257;          /* récords y bonus */
+    --display: 'Russo One', 'Arial Black', system-ui, sans-serif;
+    --cuerpo: 'Exo 2', 'Segoe UI', system-ui, sans-serif;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--espacio); color: var(--texto);
+    font: 500 16px/1.4 var(--cuerpo);
+    overflow: hidden; -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none; user-select: none;
+  }
+  /* El marco ocupa toda la pantalla; el lienzo se centra con su proporción 4:7 */
+  #marco {
+    position: relative; height: 100%;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 8px;
+    display: grid; place-items: center; box-sizing: border-box;
+  }
+  #zona { position: relative; }
+  canvas { display: block; touch-action: none; border-radius: 14px; box-shadow: 0 0 0 2px #1f2a5c, 0 0 40px rgba(94,242,255,.12); }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--cian); outline-offset: 3px; }
+
+  /* Botones pequeños sobre el juego (pausa y sonido) */
+  .mini {
+    position: absolute; top: 46px; width: 40px; height: 40px; border-radius: 12px;
+    border: 2px solid #2a3570; background: rgba(18,24,56,.75); font-size: 18px; display: grid; place-items: center;
+  }
+  #btn-pausa { right: 10px; }
+  #btn-sonido { right: 56px; }
+
+  /* Pantallas de menú encima del lienzo */
+  .capa {
+    position: absolute; inset: 0; border-radius: 14px;
+    background: radial-gradient(120% 70% at 50% 20%, rgba(40,30,110,.75), rgba(7,10,31,.92));
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+    text-align: center; padding: 24px;
+  }
+  .capa h1 { font: 400 clamp(34px, 11vw, 52px)/0.95 var(--display); margin: 0; letter-spacing: .02em;
+    background: linear-gradient(180deg, #fff, var(--cian) 55%, #2c8cff); -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 18px rgba(94,242,255,.45)); text-wrap: balance; }
+  .capa h2 { font: 400 30px/1 var(--display); margin: 0; color: var(--magenta); text-shadow: 0 0 18px rgba(255,95,210,.5); }
+  .capa p { margin: 0; color: var(--tenue); max-width: 30ch; }
+  .principal {
+    font: 400 22px/1 var(--display); letter-spacing: .04em;
+    padding: 16px 32px; border-radius: 14px; border: 0;
+    background: linear-gradient(180deg, #8ff7ff, var(--cian)); color: #06102e;
+    box-shadow: 0 6px 0 #1b7f9c, 0 0 30px rgba(94,242,255,.4);
+  }
+  .principal:active { transform: translateY(4px); box-shadow: 0 2px 0 #1b7f9c; }
+  .secundario { padding: 12px 22px; border-radius: 12px; border: 2px solid #2a3570; background: var(--panel); font-weight: 700; }
+  .datos { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .dato { background: var(--panel); border: 2px solid #232d63; border-radius: 999px; padding: 4px 14px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .dato b { color: var(--oro); }
+  .ayuda { font-size: 14px; display: grid; gap: 6px; }
+  .ayuda span { color: var(--texto); }
+  .capsulas { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-size: 13px; color: var(--tenue); }
+  .capsulas i { font-style: normal; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; color: #06102e; font-weight: 800; margin-right: 4px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="marco">
+  <div id="zona">
+    <canvas id="lienzo" aria-label="Juego Escuadrón Cometa"></canvas>
+    <button class="mini" id="btn-sonido" type="button" aria-label="Silenciar">🔊</button>
+    <button class="mini" id="btn-pausa" type="button" aria-label="Pausa" hidden>⏸</button>
+
+    <!-- Portada -->
+    <div class="capa" id="portada">
+      <h1>Escuadrón<br>Cometa</h1>
+      <p>Una flota de aliens baja hacia la Tierra. Eres la última nave del escuadrón.</p>
+      <div class="datos"><span class="dato">🏆 Récord: <b id="record-portada">0</b></span></div>
+      <button class="principal" id="btn-jugar" type="button">¡A JUGAR!</button>
+      <div class="ayuda">
+        <p>👆 <span>Arrastra el dedo</span> para mover tu nave. Dispara sola.</p>
+        <p>⌨️ En la PC: <span>flechas</span> o el <span>ratón</span>. P = pausa.</p>
+      </div>
+      <div class="capsulas">
+        <span><i style="background:#5ef2ff">2</i>Doble</span>
+        <span><i style="background:#ff5fd2">3</i>Triple</span>
+        <span><i style="background:#ffd257">⚡</i>Rápido</span>
+        <span><i style="background:#7dff9a">◎</i>Escudo</span>
+        <span><i style="background:#ff6b6b">♥</i>Vida</span>
+      </div>
+    </div>
+
+    <!-- Pausa -->
+    <div class="capa" id="pausa" hidden>
+      <h2>PAUSA</h2>
+      <button class="principal" id="btn-seguir" type="button">SEGUIR</button>
+      <button class="secundario" id="btn-salir" type="button">Salir al inicio</button>
+    </div>
+
+    <!-- Fin de la partida -->
+    <div class="capa" id="fin" hidden>
+      <h2>FIN DE LA MISIÓN</h2>
+      <p id="fin-texto">Llegaste a la oleada 1.</p>
+      <div class="datos">
+        <span class="dato">Puntos: <b id="fin-puntos">0</b></span>
+        <span class="dato">🏆 Récord: <b id="fin-record">0</b></span>
+      </div>
+      <p id="fin-nuevo" style="color:var(--oro);font-weight:700" hidden>¡Nuevo récord!</p>
+      <button class="principal" id="btn-otra" type="button">OTRA VEZ</button>
+      <button class="secundario" id="btn-inicio" type="button">Ir al inicio</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// =====================================================================
+// ESCUADRÓN COMETA — disparos espaciales: formaciones de aliens que bajan,
+// cápsulas de poder, platillo de bonus y una reina alien cada 5 oleadas.
+// =====================================================================
+const $ = (id) => document.getElementById(id);
+const lienzo = $('lienzo'), g = lienzo.getContext('2d');
+const W = 400, H = 700;                    // tamaño lógico del juego
+const azar = (a, b) => a + Math.random() * (b - a);
+const elegir = (l) => l[Math.floor(Math.random() * l.length)];
+const limitar = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// ---- Ajustar el lienzo a la pantalla (sin deformar) ----------------------
+let escala = 1;
+function ajustar() {
+  const marco = $('marco'), cs = getComputedStyle(marco);
+  const anchoLibre = marco.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const altoLibre = marco.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const e = Math.min(anchoLibre / W, altoLibre / H);
+  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  lienzo.style.width = W * e + 'px'; lienzo.style.height = H * e + 'px';
+  lienzo.width = Math.round(W * e * dpr); lienzo.height = Math.round(H * e * dpr);
+  escala = lienzo.width / W;
+}
+window.addEventListener('resize', ajustar);
+
+// ---- Datos guardados (récord y silencio) -----------------------------------
+let datos = { record: 0, silencio: false };
+try { datos = { ...datos, ...JSON.parse(localStorage.getItem('cometa-datos') || '{}') }; } catch (_) {}
+const guardar = () => { try { localStorage.setItem('cometa-datos', JSON.stringify(datos)); } catch (_) {} };
+
+// =====================================================================
+// Sonido: efectos sintetizados + música de licencia libre (CC0, Kenney)
+// =====================================================================
+const Sonido = {
+  ctx: null, ruidoBuf: null, fuente: null,
+  iniciar() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    const c = this.ctx = new AC();
+    this.maestro = c.createGain(); this.maestro.gain.value = datos.silencio ? 0 : 0.7; this.maestro.connect(c.destination);
+    this.musica = c.createGain(); this.musica.gain.value = 0.32; this.musica.connect(this.maestro);
+    // Ruido blanco para las explosiones
+    this.ruidoBuf = c.createBuffer(1, c.sampleRate, c.sampleRate);
+    const d = this.ruidoBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    fetch('sonidos/musica.mp3').then((r) => r.ok ? r.arrayBuffer() : Promise.reject())
+      .then((b) => new Promise((ok, mal) => c.decodeAudioData(b, ok, mal)))
+      .then((buf) => { this.fuente = c.createBufferSource(); this.fuente.buffer = buf; this.fuente.loop = true; this.fuente.connect(this.musica); this.fuente.start(); })
+      .catch(() => {});
+  },
+  alternar() {
+    datos.silencio = !datos.silencio; guardar();
+    if (this.ctx) this.maestro.gain.setTargetAtTime(datos.silencio ? 0 : 0.7, this.ctx.currentTime, 0.05);
+    $('btn-sonido').textContent = datos.silencio ? '🔇' : '🔊';
+  },
+  tono(f, dur, { tipo = 'square', vol = 0.1, hasta = null, cuando = 0 } = {}) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + cuando, o = this.ctx.createOscillator(), gn = this.ctx.createGain();
+    o.type = tipo; o.frequency.setValueAtTime(f, t); if (hasta) o.frequency.exponentialRampToValueAtTime(hasta, t + dur);
+    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn); gn.connect(this.maestro); o.start(t); o.stop(t + dur + 0.02);
+  },
+  ruido(dur, vol = 0.3, freq = 900) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, s = this.ctx.createBufferSource(), f = this.ctx.createBiquadFilter(), gn = this.ctx.createGain();
+    s.buffer = this.ruidoBuf; f.type = 'lowpass'; f.frequency.setValueAtTime(freq, t); f.frequency.exponentialRampToValueAtTime(80, t + dur);
+    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f); f.connect(gn); gn.connect(this.maestro); s.start(t); s.stop(t + dur);
+  },
+  disparo() { this.tono(1100, 0.08, { hasta: 500, vol: 0.035 }); },
+  enemigo() { this.tono(300, 0.12, { tipo: 'sawtooth', hasta: 160, vol: 0.03 }); },
+  explota() { this.ruido(0.3, 0.25, 1600); this.tono(180, 0.2, { tipo: 'triangle', hasta: 60, vol: 0.12 }); },
+  grande() { this.ruido(1.1, 0.45, 2200); this.tono(90, 0.9, { tipo: 'sawtooth', hasta: 30, vol: 0.15 }); },
+  golpe() { this.ruido(0.5, 0.4, 700); this.tono(140, 0.4, { tipo: 'square', hasta: 50, vol: 0.12 }); },
+  capsula() { [523, 784, 1047, 1568].forEach((f, i) => this.tono(f, 0.15, { vol: 0.06, cuando: i * 0.06 })); },
+  platillo() { this.tono(700, 0.25, { tipo: 'sine', hasta: 900, vol: 0.05 }); },
+  oleada() { [392, 523, 659, 784].forEach((f, i) => this.tono(f, 0.22, { tipo: 'triangle', vol: 0.12, cuando: i * 0.1 })); },
+  jefe() { [110, 98, 82].forEach((f, i) => this.tono(f, 0.6, { tipo: 'sawtooth', vol: 0.1, cuando: i * 0.4 })); },
+};
+$('btn-sonido').textContent = datos.silencio ? '🔇' : '🔊';
+$('btn-sonido').addEventListener('click', () => Sonido.alternar());
+document.addEventListener('pointerdown', () => Sonido.iniciar(), true);
+window.addEventListener('keydown', () => Sonido.iniciar(), true);
+
+// =====================================================================
+// Estado del juego
+// =====================================================================
+const TIPOS = {                             // aliens: puntos y color
+  pulpo: { pts: 10, color: '#ff7ab8' },
+  cangrejo: { pts: 20, color: '#7dff9a' },
+  ojon: { pts: 30, color: '#b58cff' },
+};
+const CAPSULAS = {                          // cápsulas de poder que sueltan los aliens
+  doble: { letra: '2', color: '#5ef2ff', dur: 10 },
+  triple: { letra: '3', color: '#ff5fd2', dur: 8 },
+  rapido: { letra: '⚡', color: '#ffd257', dur: 9 },
+  escudo: { letra: '◎', color: '#7dff9a', dur: 0 },
+  vida: { letra: '♥', color: '#ff6b6b', dur: 0 },
+};
+let estado = 'portada';                     // portada | jugando | pausa | fin
+let jugador, platillo = null, jefe = null;
+let balas = [], balasMalas = [], enemigos = [], particulas = [], capsulas = [];   // listas vacías desde el inicio
+let formacion, oleada = 0, puntos = 0, vidas = 3, temblor = 0, cartel = null, tDisparoMalo, tBuceo, tPlatillo, tSiguiente;
+// Estrellas en 3 capas que bajan a distinta velocidad (sensación de avanzar)
+const estrellas = Array.from({ length: 110 }, () => ({ x: azar(0, W), y: azar(0, H), capa: Math.floor(azar(0, 3)) }));
+
+function nuevaPartida() {
+  jugador = { x: W / 2, y: H - 70, tx: W / 2, vx: 0, inv: 1.5, poder: null, tPoder: 0, escudo: false, tDisparo: 0 };
+  balas = []; balasMalas = []; enemigos = []; particulas = []; capsulas = [];
+  platillo = null; jefe = null; oleada = 0; puntos = 0; vidas = 3; temblor = 0; cartel = null;
+  tPlatillo = azar(14, 22);
+  siguienteOleada();
+  estado = 'jugando';
+  for (const id of ['portada', 'fin', 'pausa']) $(id).hidden = true;
+  $('btn-pausa').hidden = false;
+}
+
+// Arma la siguiente oleada: formación de aliens o, cada 5, la Reina Medusa
+function siguienteOleada() {
+  oleada++;
+  balasMalas = []; tSiguiente = 0;
+  tDisparoMalo = 1.5; tBuceo = azar(3, 5);
+  if (oleada % 5 === 0) {
+    const nivel = oleada / 5;
+    jefe = { x: W / 2, y: -90, vida: 70 + 40 * (nivel - 1), max: 70 + 40 * (nivel - 1), t: 0, tAtaque: 2, flash: 0, nivel };
+    enemigos = [];
+    mostrarCartel(`OLEADA ${oleada}`, '¡La Reina Medusa!');
+    Sonido.jefe();
+    return;
+  }
+  const filas = Math.min(5, 3 + Math.floor((oleada - 1) / 2));
+  const cols = 7;
+  const orden = ['ojon', 'cangrejo', 'cangrejo', 'pulpo', 'pulpo'].slice(5 - filas);
+  enemigos = [];
+  for (let f = 0; f < filas; f++) for (let c = 0; c < cols; c++) {
+    enemigos.push({ tipo: orden[f], fila: f, col: c, x: 0, y: 0, buceo: null, fase: Math.random() * 6, aparece: 0 });
+  }
+  formacion = { x: 60, y: -40 - filas * 38, yMeta: 110, dir: 1, total: enemigos.length, vel: 26 + oleada * 4 };
+  mostrarCartel(`OLEADA ${oleada}`, oleada === 1 ? '¡Defiende la Tierra!' : '¡Vienen más!');
+  Sonido.oleada();
+}
+function mostrarCartel(texto, sub) { cartel = { texto, sub, t: 2.2 }; }
+
+// =====================================================================
+// Controles: arrastrar el dedo, ratón o teclado
+// =====================================================================
+let tocando = false;
+const teclas = new Set();
+function xLogica(e) { const r = lienzo.getBoundingClientRect(); return (e.clientX - r.left) / r.width * W; }
+lienzo.addEventListener('pointerdown', (e) => { tocando = true; if (estado === 'jugando') jugador.tx = xLogica(e); });
+lienzo.addEventListener('pointermove', (e) => { if (estado === 'jugando' && (tocando || e.pointerType === 'mouse')) jugador.tx = xLogica(e); });
+window.addEventListener('pointerup', () => { tocando = false; });
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  teclas.add(k);
+  if (['arrowleft', 'arrowright', ' '].includes(k)) e.preventDefault();
+  if (k === 'p' || k === 'escape') { if (estado === 'jugando') pausar(); else if (estado === 'pausa') seguir(); }
+  if (k === 'm') Sonido.alternar();
+});
+window.addEventListener('keyup', (e) => teclas.delete(e.key.toLowerCase()));
+function pausar() { if (estado !== 'jugando') return; estado = 'pausa'; $('pausa').hidden = false; }
+function seguir() { estado = 'jugando'; $('pausa').hidden = true; }
+// Si cambias de app o de pestaña, el juego se pausa solo
+document.addEventListener('visibilitychange', () => { if (document.hidden) pausar(); });
+
+// =====================================================================
+// Actualización
+// =====================================================================
+function explosion(x, y, color, n = 16, vel = 160) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * Math.PI * 2, v = azar(30, vel);
+    particulas.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vida: azar(0.4, 0.9), color, tam: azar(2, 4.5) });
+  }
+}
+// Cada cuánto dispara tu nave (más rápido con la cápsula ⚡)
+const cadencia = () => (jugador.poder === 'rapido' ? 0.15 : 0.32);
+
+function disparar() {
+  const p = jugador.poder, y = jugador.y - 24;
+  if (p === 'doble') { balas.push({ x: jugador.x - 9, y, vx: 0 }, { x: jugador.x + 9, y, vx: 0 }); }
+  else if (p === 'triple') { balas.push({ x: jugador.x, y, vx: 0 }, { x: jugador.x - 6, y, vx: -150 }, { x: jugador.x + 6, y, vx: 150 }); }
+  else balas.push({ x: jugador.x, y, vx: 0 });
+  Sonido.disparo();
+}
+
+function golpearJugador() {
+  if (jugador.inv > 0) return;
+  if (jugador.escudo) {                     // el escudo aguanta un golpe
+    jugador.escudo = false; jugador.inv = 1; explosion(jugador.x, jugador.y, '#7dff9a', 20); Sonido.golpe(); return;
+  }
+  vidas--; jugador.inv = 2.2; temblor = 12; jugador.poder = null;
+  explosion(jugador.x, jugador.y, '#5ef2ff', 30, 220); Sonido.golpe();
+  if (vidas <= 0) terminar();
+}
+
+function terminar() {
+  estado = 'fin';
+  const nuevo = puntos > datos.record;
+  if (nuevo) { datos.record = puntos; guardar(); }
+  $('fin-texto').textContent = `Llegaste a la oleada ${oleada}.`;
+  $('fin-puntos').textContent = puntos.toLocaleString('es-MX');
+  $('fin-record').textContent = datos.record.toLocaleString('es-MX');
+  $('fin-nuevo').hidden = !nuevo;
+  $('fin').hidden = false; $('btn-pausa').hidden = true;
+}
+
+function sumar(p, x, y) {
+  puntos += p;
+  particulas.push({ x, y, vx: 0, vy: -40, vida: 0.8, texto: '+' + p, color: '#ffd257' });
+}
+
+function soltarCapsula(x, y, segura = false) {
+  if (!segura && Math.random() > 0.09) return;
+  const tipos = ['doble', 'doble', 'triple', 'rapido', 'rapido', 'escudo', 'escudo', vidas < 5 ? 'vida' : 'doble'];
+  capsulas.push({ x, y, tipo: elegir(tipos), t: 0 });
+}
+
+// Posición de cada alien en la formación
+function posFormacion(e) { return { x: formacion.x + e.col * 46, y: formacion.y + e.fila * 38 }; }
+
+function actualizar(dt) {
+  // Estrellas
+  for (const s of estrellas) { s.y += [18, 45, 100][s.capa] * dt; if (s.y > H) { s.y = 0; s.x = azar(0, W); } }
+  particulas = particulas.filter((p) => (p.vida -= dt) > 0);
+  for (const p of particulas) { p.x += p.vx * dt; p.y += p.vy * dt; p.vx *= 0.97; p.vy *= 0.97; }
+  temblor = Math.max(0, temblor - dt * 30);
+  if (cartel && (cartel.t -= dt) <= 0) cartel = null;
+  if (estado !== 'jugando') return;
+
+  // ---- Tu nave ----
+  if (teclas.has('arrowleft') || teclas.has('a')) jugador.tx = jugador.x - 30;
+  if (teclas.has('arrowright') || teclas.has('d')) jugador.tx = jugador.x + 30;
+  jugador.tx = limitar(jugador.tx, 22, W - 22);
+  const antes = jugador.x;
+  jugador.x += (jugador.tx - jugador.x) * Math.min(1, dt * 14);   // sigue al dedo con suavidad
+  jugador.vx = (jugador.x - antes) / Math.max(dt, 0.001);
+  jugador.inv = Math.max(0, jugador.inv - dt);
+  if (jugador.poder && (jugador.tPoder -= dt) <= 0) jugador.poder = null;
+  if ((jugador.tDisparo -= dt) <= 0) { disparar(); jugador.tDisparo = cadencia(); }
+
+  // ---- Tus balas ----
+  for (const b of balas) { b.y -= 560 * dt; b.x += b.vx * dt; }
+  balas = balas.filter((b) => b.y > -20 && b.x > -10 && b.x < W + 10);
+
+  // ---- Formación de aliens ----
+  if (enemigos.length) {
+    const enFila = enemigos.filter((e) => !e.buceo);
+    // Entrada: bajan hasta su lugar
+    if (formacion.y < formacion.yMeta) formacion.y = Math.min(formacion.yMeta, formacion.y + 160 * dt);
+    else {
+      // Van más rápido mientras menos quedan
+      const vel = formacion.vel * (1 + (1 - enemigos.length / formacion.total) * 2.2);
+      formacion.x += formacion.dir * vel * dt;
+      const xs = enFila.map(posFormacion).map((p) => p.x);
+      if (xs.length) {
+        if (Math.max(...xs) > W - 24 && formacion.dir > 0) { formacion.dir = -1; formacion.y += 16; formacion.yMeta = formacion.y; }
+        if (Math.min(...xs) < 24 && formacion.dir < 0) { formacion.dir = 1; formacion.y += 16; formacion.yMeta = formacion.y; }
+      }
+    }
+    for (const e of enemigos) {
+      e.fase += dt * 6; e.aparece = Math.min(1, e.aparece + dt * 2);
+      if (!e.buceo) { const p = posFormacion(e); e.x = p.x; e.y = p.y; continue; }
+      // Alien en picada: baja en zigzag hacia ti y vuelve a su lugar por arriba
+      const b = e.buceo; b.t += dt;
+      e.x = b.x0 + Math.sin(b.t * 2.6) * 70 + (jugador.x - b.x0) * Math.min(1, b.t / 2.2) * 0.8;
+      e.y = b.y0 + b.t * (150 + oleada * 6);
+      if (!b.disparo && e.y > 300) { b.disparo = true; balasMalas.push({ x: e.x, y: e.y + 14, vx: (jugador.x - e.x) * 0.5, vy: 260 }); Sonido.enemigo(); }
+      if (e.y > H + 30) { e.buceo = null; e.aparece = 0; }
+    }
+    // ¿Llegaron hasta abajo? Te quitan una vida y la formación sube
+    if (enFila.some((e) => e.y > jugador.y - 40)) { golpearJugador(); formacion.y -= 150; formacion.yMeta = formacion.y; }
+    // Disparos de los aliens (los de hasta abajo de cada columna)
+    if ((tDisparoMalo -= dt) <= 0) {
+      const abajo = {};
+      for (const e of enFila) if (!abajo[e.col] || e.fila > abajo[e.col].fila) abajo[e.col] = e;
+      const tiradores = Object.values(abajo);
+      if (tiradores.length) {
+        const t = elegir(tiradores);
+        const apunta = t.tipo === 'ojon';           // el ojón apunta hacia ti
+        balasMalas.push({ x: t.x, y: t.y + 14, vx: apunta ? (jugador.x - t.x) * 0.45 : 0, vy: 220 + oleada * 7 });
+        Sonido.enemigo();
+      }
+      tDisparoMalo = Math.max(0.3, 1.25 - oleada * 0.07) * azar(0.7, 1.3);
+    }
+    // Desde la oleada 2, algunos se lanzan en picada
+    if (oleada >= 2 && (tBuceo -= dt) <= 0) {
+      const libres = enemigos.filter((e) => !e.buceo && e.aparece >= 1);
+      if (libres.length > 1) { const e = elegir(libres); e.buceo = { t: 0, x0: e.x, y0: e.y, disparo: false }; }
+      tBuceo = Math.max(1.2, 4.5 - oleada * 0.25);
+    }
+  }
+
+  // ---- Reina Medusa (jefe) ----
+  if (jefe) {
+    jefe.t += dt; jefe.flash = Math.max(0, jefe.flash - dt * 5);
+    jefe.y += (165 - jefe.y) * Math.min(1, dt * 1.5);
+    jefe.x = W / 2 + Math.sin(jefe.t * 0.7) * 120;
+    if ((jefe.tAtaque -= dt) <= 0) {
+      const enojada = jefe.vida < jefe.max / 2;
+      if (Math.random() < 0.5) {               // abanico de balas
+        const n = enojada ? 7 : 5;
+        for (let i = 0; i < n; i++) { const a = Math.PI / 2 + (i - (n - 1) / 2) * 0.22; balasMalas.push({ x: jefe.x, y: jefe.y + 40, vx: Math.cos(a) * 200, vy: Math.sin(a) * 200, grande: true }); }
+      } else {                                 // ráfaga hacia ti
+        for (let i = 0; i < 3; i++) { const dx = jugador.x - jefe.x, dy = jugador.y - jefe.y, d = Math.hypot(dx, dy); balasMalas.push({ x: jefe.x, y: jefe.y + 40, vx: dx / d * (240 + i * 40), vy: dy / d * (240 + i * 40), grande: true }); }
+      }
+      Sonido.enemigo();
+      jefe.tAtaque = (enojada ? 0.9 : 1.4) - Math.min(0.4, jefe.nivel * 0.08);
+    }
+  }
+
+  // ---- Platillo dorado de bonus ----
+  if (!platillo && !jefe && (tPlatillo -= dt) <= 0) {
+    const dir = Math.random() < 0.5 ? 1 : -1;
+    platillo = { x: dir > 0 ? -40 : W + 40, y: 70, dir };
+    tPlatillo = azar(16, 26);
+  }
+  if (platillo) {
+    platillo.x += platillo.dir * 95 * dt;
+    if (Math.floor(platillo.x / 30) % 2 === 0 && Math.random() < 0.05) Sonido.platillo();
+    if (platillo.x < -60 || platillo.x > W + 60) platillo = null;
+  }
+
+  // ---- Balas de los aliens ----
+  for (const b of balasMalas) { b.x += (b.vx || 0) * dt; b.y += b.vy * dt; }
+  balasMalas = balasMalas.filter((b) => {
+    if (b.y > H + 20 || b.x < -20 || b.x > W + 20) return false;
+    if (Math.abs(b.x - jugador.x) < 15 && Math.abs(b.y - jugador.y) < 18) { golpearJugador(); return false; }
+    return true;
+  });
+
+  // ---- Choques de tus balas ----
+  balas = balas.filter((b) => {
+    for (const e of enemigos) {
+      if (Math.abs(b.x - e.x) < 17 && Math.abs(b.y - e.y) < 15) {
+        enemigos.splice(enemigos.indexOf(e), 1);
+        const tipo = TIPOS[e.tipo];
+        sumar(tipo.pts * (e.buceo ? 2 : 1), e.x, e.y);   // en picada valen el doble
+        explosion(e.x, e.y, tipo.color); Sonido.explota();
+        soltarCapsula(e.x, e.y);
+        return false;
+      }
+    }
+    if (platillo && Math.abs(b.x - platillo.x) < 26 && Math.abs(b.y - platillo.y) < 14) {
+      const p = elegir([100, 150, 200, 300]);
+      sumar(p, platillo.x, platillo.y); explosion(platillo.x, platillo.y, '#ffd257', 30, 220); Sonido.grande();
+      soltarCapsula(platillo.x, platillo.y, true);
+      platillo = null; return false;
+    }
+    if (jefe && Math.abs(b.x - jefe.x) < 50 && Math.abs(b.y - jefe.y) < 40) {
+      jefe.vida--; jefe.flash = 1; puntos += 5;
+      explosion(b.x, b.y, '#ff9ae6', 4, 80);
+      if (jefe.vida <= 0) {
+        sumar(1000 * jefe.nivel, jefe.x, jefe.y);
+        for (let i = 0; i < 5; i++) explosion(jefe.x + azar(-40, 40), jefe.y + azar(-30, 30), elegir(['#ff5fd2', '#ffd257', '#b58cff']), 24, 260);
+        Sonido.grande(); temblor = 18;
+        capsulas.push({ x: jefe.x, y: jefe.y, tipo: 'vida', t: 0 });
+        jefe = null;
+      }
+      return false;
+    }
+    return true;
+  });
+  // Choque directo con un alien en picada
+  for (const e of enemigos) if (e.buceo && Math.abs(e.x - jugador.x) < 24 && Math.abs(e.y - jugador.y) < 22) {
+    enemigos.splice(enemigos.indexOf(e), 1); explosion(e.x, e.y, TIPOS[e.tipo].color); golpearJugador(); break;
+  }
+
+  // ---- Cápsulas de poder ----
+  for (const c of capsulas) { c.y += 110 * dt; c.t += dt; }
+  capsulas = capsulas.filter((c) => {
+    if (c.y > H + 20) return false;
+    if (Math.abs(c.x - jugador.x) < 24 && Math.abs(c.y - jugador.y) < 24) {
+      const info = CAPSULAS[c.tipo];
+      if (c.tipo === 'escudo') jugador.escudo = true;
+      else if (c.tipo === 'vida') vidas = Math.min(5, vidas + 1);
+      else { jugador.poder = c.tipo; jugador.tPoder = info.dur; }
+      Sonido.capsula();
+      particulas.push({ x: c.x, y: c.y - 10, vx: 0, vy: -50, vida: 1, texto: { doble: '¡Doble!', triple: '¡Triple!', rapido: '¡Rápido!', escudo: '¡Escudo!', vida: '¡+1 vida!' }[c.tipo], color: info.color });
+      return false;
+    }
+    return true;
+  });
+
+  // ---- ¿Oleada terminada? ----
+  if (!enemigos.length && !jefe) {
+    if (tSiguiente === 0) tSiguiente = 1.6;
+    else if ((tSiguiente -= dt) <= 0.0001) siguienteOleada();
+  }
+}
+
+// =====================================================================
+// Dibujo
+// =====================================================================
+const CONTORNO = '#0b0f2c';
+function fondo(t) {
+  const gr = g.createLinearGradient(0, 0, 0, H);
+  gr.addColorStop(0, '#0b0d2e'); gr.addColorStop(0.6, '#1a1050'); gr.addColorStop(1, '#2d1258');
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  // Planeta con anillo, a lo lejos
+  g.save(); g.globalAlpha = 0.85;
+  g.beginPath(); g.arc(330, 560, 70, 0, 7);
+  const pg = g.createRadialGradient(305, 535, 10, 330, 560, 75); pg.addColorStop(0, '#ff9ad5'); pg.addColorStop(1, '#5a1f7a');
+  g.fillStyle = pg; g.fill();
+  g.strokeStyle = 'rgba(255,210,120,.6)'; g.lineWidth = 5; g.beginPath(); g.ellipse(330, 560, 115, 22, -0.3, 0, 7); g.stroke();
+  g.restore();
+  // Estrellas
+  for (const s of estrellas) {
+    g.fillStyle = ['rgba(255,255,255,.35)', 'rgba(200,230,255,.6)', '#fff'][s.capa];
+    const tam = [1, 1.6, 2.4][s.capa];
+    g.fillRect(s.x, s.y, tam, s.capa === 2 ? tam * 3 : tam);
+  }
+}
+function naveJugador(x, y, t) {
+  g.save(); g.translate(x, y);
+  g.rotate(limitar(jugador.vx / 2500, -0.25, 0.25));   // se inclina al moverse
+  // Fuego del motor
+  const fuego = 10 + Math.sin(t * 40) * 4;
+  g.fillStyle = '#ffb347'; g.beginPath(); g.moveTo(-7, 14); g.lineTo(0, 14 + fuego * 1.6); g.lineTo(7, 14); g.fill();
+  g.fillStyle = '#fff6a8'; g.beginPath(); g.moveTo(-3.5, 14); g.lineTo(0, 14 + fuego); g.lineTo(3.5, 14); g.fill();
+  // Cuerpo
+  g.lineWidth = 2.5; g.strokeStyle = CONTORNO;
+  g.beginPath(); g.moveTo(0, -24); g.lineTo(9, -6); g.lineTo(22, 10); g.lineTo(20, 16); g.lineTo(8, 12); g.lineTo(0, 16); g.lineTo(-8, 12); g.lineTo(-20, 16); g.lineTo(-22, 10); g.lineTo(-9, -6); g.closePath();
+  const cg = g.createLinearGradient(0, -24, 0, 16); cg.addColorStop(0, '#d9fbff'); cg.addColorStop(1, '#2bb7e0');
+  g.fillStyle = cg; g.fill(); g.stroke();
+  // Alerones rosas y cabina
+  g.fillStyle = '#ff5fd2'; g.beginPath(); g.moveTo(-22, 10); g.lineTo(-27, 18); g.lineTo(-18, 15); g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(22, 10); g.lineTo(27, 18); g.lineTo(18, 15); g.fill(); g.stroke();
+  g.fillStyle = '#16205a'; g.beginPath(); g.ellipse(0, -4, 4.5, 8, 0, 0, 7); g.fill();
+  g.fillStyle = 'rgba(255,255,255,.7)'; g.beginPath(); g.ellipse(-1.5, -7, 1.5, 3, 0, 0, 7); g.fill();
+  g.restore();
+}
+// Aliens dibujados (3 especies con animación)
+function alien(e, t) {
+  const { x, y } = e, f = Math.sin(e.fase), col = TIPOS[e.tipo].color;
+  g.save(); g.translate(x, y); g.globalAlpha = e.aparece;
+  g.lineWidth = 2.5; g.strokeStyle = CONTORNO;
+  if (e.tipo === 'pulpo') {
+    // Tentáculos que se menean
+    g.strokeStyle = col; g.lineWidth = 4; g.lineCap = 'round';
+    for (let i = -1.5; i <= 1.5; i++) { g.beginPath(); g.moveTo(i * 6, 4); g.quadraticCurveTo(i * 8 + f * 4, 12, i * 7 - f * 3, 17); g.stroke(); }
+    g.strokeStyle = CONTORNO; g.lineWidth = 2.5;
+    g.beginPath(); g.arc(0, -2, 13, Math.PI, 0); g.lineTo(13, 6); g.lineTo(-13, 6); g.closePath(); g.fillStyle = col; g.fill(); g.stroke();
+    ojos(-5, -3, 5, -3, 3.2);
+  } else if (e.tipo === 'cangrejo') {
+    // Pinzas que se abren y cierran
+    for (const s of [-1, 1]) {
+      g.save(); g.translate(s * 14, -4); g.rotate(s * (0.4 + f * 0.25));
+      g.beginPath(); g.arc(0, -6, 6, s > 0 ? -Math.PI * 0.9 : -Math.PI * 0.1, s > 0 ? Math.PI * 0.4 : Math.PI * 1.1, s < 0); g.fillStyle = col; g.fill(); g.stroke(); g.restore();
+    }
+    g.beginPath(); g.ellipse(0, 2, 14, 10, 0, 0, 7); g.fillStyle = col; g.fill(); g.stroke();
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(s * 5, -6); g.lineTo(s * 6, -13); g.stroke(); g.beginPath(); g.arc(s * 6, -14, 3.5, 0, 7); g.fillStyle = '#fff'; g.fill(); g.stroke(); g.fillStyle = CONTORNO; g.beginPath(); g.arc(s * 6, -14, 1.5, 0, 7); g.fill(); }
+    g.beginPath(); g.arc(0, 5, 4, 0.2, Math.PI - 0.2); g.stroke();
+    // Patitas
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(s * 8, 10); g.lineTo(s * (12 + f * 2), 15); g.stroke(); }
+  } else {
+    // Ojón: una sola pupila que te sigue con la mirada
+    for (const s of [-1, 1]) { g.beginPath(); g.moveTo(s * 6, -11); g.lineTo(s * (10 + f * 2), -19); g.stroke(); g.beginPath(); g.arc(s * (10 + f * 2), -20, 2.5, 0, 7); g.fillStyle = '#ffd257'; g.fill(); }
+    g.beginPath(); g.roundRect(-14, -12, 28, 24, 10); g.fillStyle = col; g.fill(); g.stroke();
+    g.beginPath(); g.arc(0, -1, 8, 0, 7); g.fillStyle = '#fff'; g.fill(); g.stroke();
+    const dx = limitar((jugador.x - x) / 60, -3, 3);
+    g.fillStyle = CONTORNO; g.beginPath(); g.arc(dx, 1, 3.5, 0, 7); g.fill();
+    g.fillStyle = col; g.fillRect(-12, 10, 6, 4 + f * 2); g.fillRect(6, 10, 6, 4 - f * 2);
+  }
+  g.restore();
+}
+function ojos(x1, y1, x2, y2, r) {
+  for (const [x, y] of [[x1, y1], [x2, y2]]) { g.beginPath(); g.arc(x, y, r, 0, 7); g.fillStyle = '#fff'; g.fill(); g.fillStyle = CONTORNO; g.beginPath(); g.arc(x + 0.8, y + 0.8, r * 0.5, 0, 7); g.fill(); }
+}
+function reinaMedusa(j, t) {
+  g.save(); g.translate(j.x, j.y);
+  // Tentáculos largos
+  g.lineCap = 'round';
+  for (let i = 0; i < 8; i++) {
+    const x0 = -42 + i * 12;
+    g.strokeStyle = i % 2 ? '#ff5fd2' : '#b58cff'; g.lineWidth = 6;
+    g.beginPath(); g.moveTo(x0, 20);
+    g.bezierCurveTo(x0 + Math.sin(t * 3 + i) * 14, 50, x0 - Math.sin(t * 3 + i) * 14, 75, x0 + Math.sin(t * 2 + i) * 10, 95); g.stroke();
+  }
+  // Cabeza (campana)
+  g.lineWidth = 3; g.strokeStyle = CONTORNO;
+  g.beginPath(); g.moveTo(-55, 22); g.bezierCurveTo(-60, -50, 60, -50, 55, 22); g.quadraticCurveTo(0, 34, -55, 22); g.closePath();
+  const cg = g.createRadialGradient(-10, -20, 5, 0, 0, 70); cg.addColorStop(0, j.flash > 0 ? '#ffffff' : '#ffc4f0'); cg.addColorStop(1, '#a12a9c');
+  g.fillStyle = cg; g.fill(); g.stroke();
+  // Corona
+  g.fillStyle = '#ffd257';
+  g.beginPath(); g.moveTo(-20, -30); g.lineTo(-14, -48); g.lineTo(-6, -34); g.lineTo(0, -52); g.lineTo(6, -34); g.lineTo(14, -48); g.lineTo(20, -30); g.closePath(); g.fill(); g.stroke();
+  // Cara enojada
+  ojos(-18, -2, 18, -2, 8);
+  g.strokeStyle = CONTORNO; g.lineWidth = 3.5;
+  g.beginPath(); g.moveTo(-28, -14); g.lineTo(-10, -9); g.moveTo(28, -14); g.lineTo(10, -9); g.stroke();
+  g.beginPath(); g.arc(0, 16, 9, Math.PI + 0.3, -0.3); g.stroke();
+  g.restore();
+  // Barra de vida
+  // (más abajo que los botones de pausa y sonido para que no la tapen)
+  g.fillStyle = 'rgba(0,0,0,.5)'; g.fillRect(40, 100, W - 80, 10);
+  g.fillStyle = '#ff5fd2'; g.fillRect(40, 100, (W - 80) * (j.vida / j.max), 10);
+  g.strokeStyle = '#fff'; g.lineWidth = 1.5; g.strokeRect(40, 100, W - 80, 10);
+  g.fillStyle = '#fff'; g.font = '12px "Russo One", sans-serif'; g.textAlign = 'center'; g.fillText('REINA MEDUSA', W / 2, 94);
+}
+function platilloDorado(p, t) {
+  g.save(); g.translate(p.x, p.y);
+  g.lineWidth = 2.5; g.strokeStyle = CONTORNO;
+  g.beginPath(); g.ellipse(0, -5, 11, 9, 0, Math.PI, 0); g.fillStyle = 'rgba(160,240,255,.8)'; g.fill(); g.stroke();
+  g.beginPath(); g.ellipse(0, 2, 26, 8, 0, 0, 7); g.fillStyle = '#ffd257'; g.fill(); g.stroke();
+  for (let i = -2; i <= 2; i++) { g.fillStyle = (Math.floor(t * 8) + i) % 2 ? '#ff5fd2' : '#fff'; g.beginPath(); g.arc(i * 9, 3, 2.2, 0, 7); g.fill(); }
+  g.restore();
+}
+function hud() {
+  g.textBaseline = 'top';
+  g.fillStyle = '#fff'; g.font = '18px "Russo One", sans-serif'; g.textAlign = 'left';
+  g.fillText(puntos.toLocaleString('es-MX'), 12, 12);
+  g.font = '11px "Exo 2", sans-serif'; g.fillStyle = '#9aa6d6';
+  g.fillText(`RÉCORD ${Math.max(datos.record, puntos).toLocaleString('es-MX')}`, 12, 34);
+  g.textAlign = 'center'; g.font = '13px "Russo One", sans-serif'; g.fillStyle = '#ffd257';
+  g.fillText(`OLEADA ${oleada}`, W / 2, 14);
+  // Vidas como navecitas
+  for (let i = 0; i < vidas; i++) {
+    const x = W - 20 - i * 20, y = 22;
+    g.fillStyle = '#5ef2ff'; g.beginPath(); g.moveTo(x, y - 8); g.lineTo(x + 7, y + 6); g.lineTo(x - 7, y + 6); g.closePath(); g.fill();
+  }
+  // Poder activo con su barra de tiempo
+  if (jugador.poder) {
+    const info = CAPSULAS[jugador.poder];
+    g.fillStyle = info.color; g.textAlign = 'left'; g.font = '12px "Russo One", sans-serif';
+    g.fillText({ doble: 'DOBLE', triple: 'TRIPLE', rapido: 'RÁPIDO' }[jugador.poder], 12, H - 26);
+    g.fillRect(80, H - 22, 80 * (jugador.tPoder / info.dur), 6);
+  }
+  if (jugador.escudo) { g.fillStyle = '#7dff9a'; g.textAlign = 'right'; g.font = '12px "Russo One", sans-serif'; g.fillText('◎ ESCUDO', W - 12, H - 26); }
+  g.textBaseline = 'alphabetic';
+}
+function dibujar(t) {
+  g.setTransform(escala, 0, 0, escala, 0, 0);
+  if (temblor > 0) g.translate(azar(-temblor, temblor) * 0.4, azar(-temblor, temblor) * 0.4);
+  fondo(t);
+  if (estado === 'portada') return;
+  if (platillo) platilloDorado(platillo, t);
+  for (const e of enemigos) alien(e, t);
+  if (jefe) reinaMedusa(jefe, t);
+  // Cápsulas
+  for (const c of capsulas) {
+    const info = CAPSULAS[c.tipo], s = 1 + Math.sin(c.t * 8) * 0.08;
+    g.save(); g.translate(c.x, c.y); g.scale(s, s);
+    g.shadowColor = info.color; g.shadowBlur = 14;
+    g.beginPath(); g.roundRect(-12, -12, 24, 24, 8); g.fillStyle = info.color; g.fill();
+    g.shadowBlur = 0; g.lineWidth = 2; g.strokeStyle = '#fff'; g.stroke();
+    g.fillStyle = '#06102e'; g.font = 'bold 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(info.letra, 0, 1);
+    g.restore();
+  }
+  // Tus balas (rayitos cian)
+  g.fillStyle = '#bff9ff'; g.shadowColor = '#5ef2ff'; g.shadowBlur = 10;
+  for (const b of balas) { g.beginPath(); g.roundRect(b.x - 2, b.y - 8, 4, 16, 2); g.fill(); }
+  // Balas de los aliens (bolitas que palpitan)
+  g.shadowColor = '#ff5fd2';
+  for (const b of balasMalas) { g.fillStyle = b.grande ? '#ff8ae0' : '#ff6b6b'; g.beginPath(); g.arc(b.x, b.y, b.grande ? 6 : 4 + Math.sin(t * 20) * 0.8, 0, 7); g.fill(); }
+  g.shadowBlur = 0;
+  // Tu nave (parpadea si acabas de recibir un golpe)
+  if (estado !== 'fin' && (jugador.inv <= 0 || Math.floor(t * 12) % 2 === 0)) {
+    naveJugador(jugador.x, jugador.y, t);
+    if (jugador.escudo) { g.strokeStyle = `rgba(125,255,154,${0.5 + Math.sin(t * 6) * 0.25})`; g.lineWidth = 3; g.beginPath(); g.arc(jugador.x, jugador.y - 2, 30, 0, 7); g.stroke(); }
+  }
+  // Chispas y puntos flotantes
+  for (const p of particulas) {
+    g.globalAlpha = Math.min(1, p.vida * 2);
+    if (p.texto) { g.fillStyle = p.color; g.font = '14px "Russo One", sans-serif'; g.textAlign = 'center'; g.fillText(p.texto, p.x, p.y); }
+    else { g.fillStyle = p.color; g.fillRect(p.x - p.tam / 2, p.y - p.tam / 2, p.tam, p.tam); }
+  }
+  g.globalAlpha = 1;
+  hud();
+  // Cartel de la oleada
+  if (cartel) {
+    const a = Math.min(1, cartel.t * 2, (2.2 - cartel.t) * 4);
+    g.globalAlpha = a; g.textAlign = 'center';
+    g.fillStyle = '#ffd257'; g.font = '40px "Russo One", sans-serif'; g.fillText(cartel.texto, W / 2, H / 2 - 10);
+    g.fillStyle = '#fff'; g.font = '18px "Exo 2", sans-serif'; g.fillText(cartel.sub, W / 2, H / 2 + 22);
+    g.globalAlpha = 1;
+  }
+}
+
+// Bucle principal
+let ultimo = performance.now();
+function bucle(ahora) {
+  requestAnimationFrame(bucle);
+  const dt = Math.min(0.033, (ahora - ultimo) / 1000); ultimo = ahora;
+  actualizar(dt); dibujar(ahora / 1000);
+}
+
+// Celulares viejos sin roundRect: se dibuja como rectángulo normal
+if (!CanvasRenderingContext2D.prototype.roundRect) CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h) { this.rect(x, y, w, h); };
+
+// ---- Botones de los menús ----
+$('btn-jugar').addEventListener('click', nuevaPartida);
+$('btn-otra').addEventListener('click', nuevaPartida);
+$('btn-pausa').addEventListener('click', pausar);
+$('btn-seguir').addEventListener('click', seguir);
+function alInicio() {
+  estado = 'portada';
+  for (const id of ['fin', 'pausa']) $(id).hidden = true;
+  $('portada').hidden = false; $('btn-pausa').hidden = true;
+  $('record-portada').textContent = datos.record.toLocaleString('es-MX');
+}
+$('btn-salir').addEventListener('click', alInicio);
+$('btn-inicio').addEventListener('click', alInicio);
+
+// Arranque
+jugador = { x: W / 2, y: H - 70, tx: W / 2, vx: 0, inv: 0, poder: null, escudo: false };
+$('record-portada').textContent = datos.record.toLocaleString('es-MX');
+ajustar();
+requestAnimationFrame(bucle);
+</script>
