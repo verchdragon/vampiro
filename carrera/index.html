@@ -75,6 +75,11 @@
   .monedas { background: var(--papel); border: 3px solid var(--tinta); border-radius: 999px; padding: 4px 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .monedas::before { content: '🪙 '; }
   .volver { align-self: flex-start; }
+  /* Campo para el nombre del jugador */
+  .nombre { display: grid; gap: 4px; font-weight: 800; }
+  .nombre input { font: 400 22px/1 var(--display); text-align: center; color: var(--tinta); background: var(--papel);
+    border: 3px solid var(--tinta); border-radius: 14px; padding: 10px 14px; width: min(70vw, 260px); box-shadow: 0 4px 0 var(--tinta); }
+  .nombre input:focus { outline: 3px solid var(--naranja); outline-offset: 2px; }
 
   /* Tarjetas de pistas y de la tienda */
   .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; width: 100%; }
@@ -127,6 +132,9 @@
     <h1>Carrera<br>Peluda</h1>
     <canvas id="vista-portada" width="320" height="200" style="width:min(80vw,320px,45vh);height:auto" aria-hidden="true"></canvas>
     <p class="sub">Corre, salta y usa poderes para llegar primero a la meta. ¡Cuidado con los huecos!</p>
+    <label class="nombre" for="campo-nombre">Tu nombre
+      <input id="campo-nombre" type="text" maxlength="12" autocomplete="off" spellcheck="false" placeholder="Escribe tu nombre">
+    </label>
     <button class="btn grande" id="btn-correr" type="button">¡A CORRER!</button>
     <div class="fila">
       <button class="btn claro" id="btn-tienda" type="button">🛍️ Tienda</button>
@@ -218,8 +226,12 @@ function ajustar() {
 window.addEventListener('resize', ajustar);
 
 // ---- Datos guardados --------------------------------------------------------
-let datos = { monedas: 0, personajes: { bolita: true, pepe: true }, gorros: { nada: true }, personaje: 'bolita', gorro: 'nada', mejores: {}, silencio: false };
+let datos = { monedas: 0, personajes: { bolita: true, pepe: true }, gorros: { nada: true }, personaje: 'bolita', gorro: 'nada', mejores: {}, silencio: false, nombre: '' };
 try { const g0 = JSON.parse(localStorage.getItem('peluda-datos') || '{}'); datos = { ...datos, ...g0, personajes: { ...datos.personajes, ...(g0.personajes || {}) }, gorros: { ...datos.gorros, ...(g0.gorros || {}) } }; } catch (_) {}
+// Nombre que se muestra: el que escribió el jugador o "Tú"
+const miNombre = () => (datos.nombre || '').trim() || 'Tú';
+// Evita que un nombre con < o & rompa la tabla de resultados
+const limpio = (t) => t.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
 const guardar = () => { try { localStorage.setItem('peluda-datos', JSON.stringify(datos)); } catch (_) {} };
 
 // ---- Corredores, gorritos, pistas y poderes -----------------------------------
@@ -699,7 +711,14 @@ function dibujarCarrera(t) {
     if (!c.cayendo || c.y < H) dibujarAnimal(g, c.pj, c.gorro, x, c.y, t, { corre: estado === 'carrera' && c.meta === null, aire: !c.enSuelo, mareo: c.mareo > 0 });
     if (c.escudo > 0) { g.beginPath(); g.arc(x + 2, c.y - 20, 26, 0, 7); g.fillStyle = 'rgba(127,214,255,.25)'; g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#7fd6ff'; g.stroke(); }
     // Flechita sobre ti
-    if (c.esJugador) { g.fillStyle = '#ffd23f'; g.strokeStyle = TINTA; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 6, c.y - 62); g.lineTo(x + 6, c.y - 62); g.lineTo(x, c.y - 54); g.closePath(); g.fill(); g.stroke(); }
+    if (c.esJugador) {
+      g.fillStyle = '#ffd23f'; g.strokeStyle = TINTA; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 6, c.y - 58); g.lineTo(x + 6, c.y - 58); g.lineTo(x, c.y - 50); g.closePath(); g.fill(); g.stroke();
+      // Tu nombre en una etiqueta amarilla
+      g.font = '13px "Lilita One", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+      const n = miNombre(), w = g.measureText(n).width + 14;
+      g.beginPath(); g.roundRect(x - w / 2, c.y - 78, w, 18, 9); g.fillStyle = '#ffd23f'; g.fill(); g.stroke();
+      g.fillStyle = TINTA; g.fillText(n, x, c.y - 69); g.textBaseline = 'alphabetic';
+    }
   }
   // Martillos cayendo (con sombra de aviso)
   for (const m of martillos) {
@@ -768,8 +787,8 @@ function terminarCarrera() {
   const id = pista.def.id, nuevo = !datos.mejores[id] || yo.meta < datos.mejores[id];
   if (nuevo) datos.mejores[id] = yo.meta;
   guardar();
-  $('titulo-res').textContent = lugar === 1 ? '¡Ganaste! 🏆' : `Llegaste ${lugar}º`;
-  $('podio').innerHTML = orden.map((c, i) => `<div class="lugar${c.esJugador ? ' yo' : ''}"><span class="n">${['🥇', '🥈', '🥉', '4º'][i]}</span><canvas width="128" height="96" data-res="${i}"></canvas><b>${c.pj.nombre}${c.esJugador ? ' (tú)' : ''}</b><span>${c.meta !== null ? c.meta.toFixed(1) + ' s' : '—'}</span></div>`).join('');
+  $('titulo-res').textContent = lugar === 1 ? `¡Ganaste, ${miNombre()}! 🏆` : `${miNombre()}, llegaste ${lugar}º`;
+  $('podio').innerHTML = orden.map((c, i) => `<div class="lugar${c.esJugador ? ' yo' : ''}"><span class="n">${['🥇', '🥈', '🥉', '4º'][i]}</span><canvas width="128" height="96" data-res="${i}"></canvas><b>${c.esJugador ? limpio(miNombre()) + ' (' + c.pj.nombre + ')' : c.pj.nombre}</b><span>${c.meta !== null ? c.meta.toFixed(1) + ' s' : '—'}</span></div>`).join('');
   orden.forEach((c, i) => { const cv = document.querySelector(`[data-res="${i}"]`).getContext('2d'); dibujarAnimal(cv, c.pj, c.gorro, 64, 88, 0, { tam: 2 }); });
   $('premio').textContent = `+${premio} 🪙`;
   $('tiempo-res').textContent = `Tu tiempo: ${yo.meta.toFixed(1)} s${nuevo ? ' · ¡Tu mejor tiempo en esta pista!' : ` · Mejor: ${datos.mejores[id].toFixed(1)} s`} · Monedas en la pista: ${monedasCarrera}`;
@@ -849,6 +868,7 @@ $('btn-poder').addEventListener('pointerdown', (e) => { e.preventDefault(); usar
 // Tocar la mitad derecha de la pista también salta
 lienzo.addEventListener('pointerdown', (e) => { const r = lienzo.getBoundingClientRect(); if (e.clientX - r.left > r.width / 2) saltar(yo); else usarPoder(yo); });
 window.addEventListener('keydown', (e) => {
+  if (e.target.closest && e.target.closest('input')) return;   // escribiendo el nombre
   const k = e.key.toLowerCase();
   if ([' ', 'arrowup', 'w'].includes(k)) { e.preventDefault(); if (yo) saltar(yo); }
   if (['x', 'z', 'shift', 'enter'].includes(k) && yo) usarPoder(yo);
@@ -875,6 +895,9 @@ function bucle(ahora) {
   if (!$('portada').hidden) dibujarPortada(t);
 }
 $('monedas-portada').textContent = datos.monedas;
+$('campo-nombre').value = datos.nombre || '';
+$('campo-nombre').addEventListener('input', (e) => { datos.nombre = e.target.value.slice(0, 12); guardar(); });
+$('campo-nombre').addEventListener('keydown', (e) => { if (e.key === 'Enter') e.target.blur(); });
 ajustar();
 requestAnimationFrame(bucle);
 </script>
