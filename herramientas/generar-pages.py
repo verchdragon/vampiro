@@ -58,3 +58,8 @@ shutil.copytree(raiz / 'mansion' / 'sonidos', raiz / 'docs' / 'mansion' / 'sonid
 generar('naves/index.html', 'docs/naves/index.html',
         'Escuadrón Cometa: detén a la flota de aliens antes de que llegue a la Tierra.', '#070a1f')
 shutil.copytree(raiz / 'naves' / 'sonidos', raiz / 'docs' / 'naves' / 'sonidos', dirs_exist_ok=True)
+
+# Carrera Peluda → https://verchdragon.github.io/vampiro/carrera/
+generar('carrera/index.html', 'docs/carrera/index.html',
+        'Carrera Peluda: corre, salta y usa poderes para ganarle a tres rivales.', '#8fd6ff')
+shutil.copytree(raiz / 'carrera' / 'sonidos', raiz / 'docs' / 'carrera' / 'sonidos', dirs_exist_ok=True)
