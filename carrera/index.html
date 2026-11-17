@@ -1,0 +1,880 @@
+<title>Carrera Peluda</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&family=Nunito:wght@600;800&display=swap">
+<style>
+  /* Diseño: juego horizontal (16:9) centrado; menús de caricatura a pantalla completa
+     con colores de dulce y contornos gruesos. Un solo look claro y alegre. */
+  :root {
+    --cielo: #bfe8ff;        /* fondo general */
+    --tinta: #2a1d4a;        /* texto y contornos */
+    --papel: #fffaf0;        /* tarjetas */
+    --naranja: #ff8a3d;      /* acento principal (botones) */
+    --verde: #4fd17a;        /* listo / comprar */
+    --amarillo: #ffd23f;     /* monedas */
+    --rosa: #ff6fa8;         /* poderes */
+    --display: 'Lilita One', 'Arial Rounded MT Bold', system-ui, sans-serif;
+    --cuerpo: 'Nunito', 'Trebuchet MS', system-ui, sans-serif;
+    color-scheme: light;
+  }
+  html, body { height: 100%; }
+  body {
+    background: linear-gradient(#8fd6ff, var(--cielo)); color: var(--tinta);
+    font: 600 16px/1.35 var(--cuerpo); overflow: hidden;
+    -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none;
+  }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  button:focus-visible { outline: 3px solid var(--tinta); outline-offset: 3px; }
+
+  /* ---- Zona del juego (lienzo centrado 16:9) ---- */
+  #marco {
+    height: 100%; box-sizing: border-box; display: grid; place-items: center;
+    padding-left: max(8px, env(safe-area-inset-left, 0px)); padding-right: max(8px, env(safe-area-inset-right, 0px));
+    padding-block: 6px;
+  }
+  #zona { position: relative; }
+  canvas#lienzo { display: block; border-radius: 16px; border: 3px solid var(--tinta); touch-action: none; background: #8fd6ff; }
+
+  /* Botones de la carrera, encima del lienzo */
+  .control {
+    position: absolute; bottom: 10px; width: 22%; max-width: 110px; aspect-ratio: 1; border-radius: 50%;
+    border: 3px solid var(--tinta); box-shadow: 0 5px 0 var(--tinta);
+    font: 400 clamp(12px, 2.6vw, 18px)/1 var(--display); display: grid; place-items: center; touch-action: none;
+  }
+  .control:active, .control.apretado { transform: translateY(4px); box-shadow: 0 1px 0 var(--tinta); }
+  #btn-saltar { right: 10px; background: var(--verde); }
+  #btn-poder { left: 10px; background: #fff; }
+  #btn-poder .ico { font-size: clamp(22px, 5vw, 38px); line-height: 1; }
+  #btn-poder.vacio { opacity: .55; }
+  #btn-pausa { position: absolute; top: 8px; right: 8px; width: 40px; height: 40px; border-radius: 12px; border: 3px solid var(--tinta); background: var(--papel); font-size: 16px; }
+
+  /* ---- Menús a pantalla completa ---- */
+  .menu {
+    position: fixed; inset: 0; z-index: 10; overflow: auto;
+    background: radial-gradient(120% 80% at 50% 0%, #fff7d6, #9fdcff 70%);
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: calc(16px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-bottom, 0px));
+  }
+  .menu .caja { max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; align-items: center; text-align: center; }
+  h1, h2, h3 { font-family: var(--display); font-weight: 400; margin: 0; letter-spacing: .02em; text-wrap: balance; }
+  h1 { font-size: clamp(36px, min(11vw, 13vh), 76px); line-height: .9; color: var(--naranja); -webkit-text-stroke: 3px var(--tinta); paint-order: stroke fill; text-shadow: 0 6px 0 var(--tinta); }
+  h2 { font-size: clamp(30px, 7vw, 44px); color: var(--tinta); }
+  h3 { font-size: 22px; }
+  .sub { max-width: 34ch; }
+  .fila { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; align-items: center; }
+  .btn {
+    border: 3px solid var(--tinta); border-radius: 18px; background: var(--naranja); color: #fff;
+    font: 400 22px/1 var(--display); letter-spacing: .03em; padding: 14px 26px;
+    box-shadow: 0 6px 0 var(--tinta); -webkit-text-stroke: 1px var(--tinta); paint-order: stroke fill;
+  }
+  .btn:active { transform: translateY(5px); box-shadow: 0 1px 0 var(--tinta); }
+  .btn.claro { background: var(--papel); color: var(--tinta); -webkit-text-stroke: 0; font-size: 18px; }
+  .btn.grande { font-size: 30px; padding: 18px 40px; }
+  .btn:disabled { opacity: .5; }
+  .monedas { background: var(--papel); border: 3px solid var(--tinta); border-radius: 999px; padding: 4px 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .monedas::before { content: '🪙 '; }
+  .volver { align-self: flex-start; }
+
+  /* Tarjetas de pistas y de la tienda */
+  .rejilla { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; width: 100%; }
+  .tarjeta {
+    min-width: 0; background: var(--papel); border: 3px solid var(--tinta); border-radius: 18px; box-shadow: 0 5px 0 var(--tinta);
+    padding: 10px; display: grid; gap: 6px; justify-items: center; text-align: center;
+  }
+  .tarjeta canvas { width: 100%; max-width: 160px; aspect-ratio: 4 / 3; border-radius: 12px; }
+  .tarjeta b { font-family: var(--display); font-weight: 400; font-size: 20px; }
+  .tarjeta small { opacity: .75; }
+  .tarjeta.elegido { background: #e6ffe9; }
+  .tarjeta .btn { font-size: 16px; padding: 8px 14px; box-shadow: 0 4px 0 var(--tinta); }
+  .tarjeta .btn.verde { background: var(--verde); }
+  button.tarjeta:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--tinta); }
+
+  /* Resultados */
+  .podio { display: grid; gap: 8px; width: min(100%, 420px); }
+  .lugar { display: grid; grid-template-columns: 54px 64px 1fr auto; gap: 10px; align-items: center; background: var(--papel); border: 3px solid var(--tinta); border-radius: 16px; padding: 6px 12px; text-align: left; }
+  .lugar.yo { background: #fff1c2; }
+  .lugar .n { font: 400 28px/1 var(--display); }
+  .lugar canvas { width: 64px; height: 48px; }
+  .premio { font: 400 26px/1 var(--display); color: #c97a00; }
+
+  /* Aviso para girar el celular */
+  #girar { position: fixed; left: 50%; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 5;
+    background: var(--papel); border: 3px solid var(--tinta); border-radius: 999px; padding: 8px 16px; font-weight: 800; white-space: nowrap; }
+  @media (orientation: landscape) { #girar { display: none; } }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div id="marco">
+  <div id="zona">
+    <canvas id="lienzo" aria-label="Carrera"></canvas>
+    <div id="controles" hidden>
+      <button class="control vacio" id="btn-poder" type="button" aria-label="Usar poder"><span class="ico" id="ico-poder">·</span></button>
+      <button class="control" id="btn-saltar" type="button" aria-label="Saltar">SALTA</button>
+      <button id="btn-pausa" type="button" aria-label="Pausa">⏸</button>
+    </div>
+  </div>
+</div>
+<div id="girar" hidden>📱↻ Gira tu celular para ver mejor la pista</div>
+
+<!-- Portada -->
+<section class="menu" id="portada">
+  <div class="caja">
+    <div class="fila" style="align-self:stretch;justify-content:space-between">
+      <span class="monedas" id="monedas-portada">0</span>
+      <button class="btn claro" id="btn-sonido" type="button" aria-label="Silenciar">🔊</button>
+    </div>
+    <h1>Carrera<br>Peluda</h1>
+    <canvas id="vista-portada" width="320" height="200" style="width:min(80vw,320px,45vh);height:auto" aria-hidden="true"></canvas>
+    <p class="sub">Corre, salta y usa poderes para llegar primero a la meta. ¡Cuidado con los huecos!</p>
+    <button class="btn grande" id="btn-correr" type="button">¡A CORRER!</button>
+    <div class="fila">
+      <button class="btn claro" id="btn-tienda" type="button">🛍️ Tienda</button>
+      <button class="btn claro" id="btn-como" type="button">❓ Cómo se juega</button>
+    </div>
+    <div id="como" hidden class="tarjeta" style="text-align:left;justify-items:start;max-width:520px">
+      <p>🟢 <b style="font-size:16px">SALTA</b> (o toca la mitad derecha de la pista / barra espaciadora) para brincar huecos, troncos y escalones.</p>
+      <p>🎁 Toca las cajas <b style="font-size:16px">?</b> para ganar un poder y úsalo con el botón de la izquierda (o la tecla X):</p>
+      <p>🚀 Cohete: corres rapidísimo. ⚡ Rayo: tumba a todos los de adelante. 🛡️ Escudo: te protege. 🍌 Cáscara: la dejas atrás. 🔨 Martillo: le cae al de adelante.</p>
+      <p>🪙 Junta monedas en la pista y gana más según tu lugar. Úsalas en la tienda.</p>
+    </div>
+  </div>
+</section>
+
+<!-- Elegir pista -->
+<section class="menu" id="pistas" hidden>
+  <div class="caja">
+    <button class="btn claro volver" type="button" data-ir="portada">← Volver</button>
+    <h2>Elige la pista</h2>
+    <div class="rejilla" id="lista-pistas"></div>
+  </div>
+</section>
+
+<!-- Tienda -->
+<section class="menu" id="tienda" hidden>
+  <div class="caja">
+    <div class="fila" style="align-self:stretch;justify-content:space-between">
+      <button class="btn claro" type="button" data-ir="portada">← Volver</button>
+      <span class="monedas" id="monedas-tienda">0</span>
+    </div>
+    <h2>Tienda</h2>
+    <h3>Corredores</h3>
+    <div class="rejilla" id="lista-personajes"></div>
+    <h3>Gorritos</h3>
+    <div class="rejilla" id="lista-gorros"></div>
+  </div>
+</section>
+
+<!-- Pausa -->
+<section class="menu" id="pausa" hidden style="background:rgba(42,29,74,.6)">
+  <div class="caja" style="min-height:100%;justify-content:center">
+    <h2 style="color:#fff">Pausa</h2>
+    <button class="btn grande" id="btn-seguir" type="button">SEGUIR</button>
+    <button class="btn claro" id="btn-abandonar" type="button">Salir de la carrera</button>
+  </div>
+</section>
+
+<!-- Resultados -->
+<section class="menu" id="resultados" hidden>
+  <div class="caja">
+    <h2 id="titulo-res">¡Llegaste 1º!</h2>
+    <div class="podio" id="podio"></div>
+    <p class="premio" id="premio">+30 🪙</p>
+    <p id="tiempo-res"></p>
+    <div class="fila">
+      <button class="btn" id="btn-revancha" type="button">Otra vez</button>
+      <button class="btn claro" type="button" data-ir="pistas">Otra pista</button>
+      <button class="btn claro" type="button" data-ir="portada">Inicio</button>
+    </div>
+  </div>
+</section>
+
+<script>
+'use strict';
+// =====================================================================
+// CARRERA PELUDA — carreras de lado entre 4 animalitos con poderes.
+// Tú contra 3 corredores de la computadora. Pistas generadas con semilla
+// (siempre iguales), cajas de poder, monedas y tienda.
+// =====================================================================
+const $ = (id) => document.getElementById(id);
+const lienzo = $('lienzo'), g = lienzo.getContext('2d');
+const W = 640, H = 360;                     // tamaño lógico (16:9)
+const limitar = (v, a, b) => Math.max(a, Math.min(b, v));
+const elegir = (l) => l[Math.floor(Math.random() * l.length)];
+const TINTA = '#2a1d4a';
+if (!CanvasRenderingContext2D.prototype.roundRect) CanvasRenderingContext2D.prototype.roundRect = function (x, y, w, h) { this.rect(x, y, w, h); };
+
+// ---- Ajustar el lienzo a la pantalla --------------------------------------
+let escala = 1;
+function ajustar() {
+  const m = $('marco'), cs = getComputedStyle(m);
+  const aw = m.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+  const ah = m.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+  const e = Math.min(aw / W, ah / H), dpr = Math.min(2, window.devicePixelRatio || 1);
+  lienzo.style.width = W * e + 'px'; lienzo.style.height = H * e + 'px';
+  lienzo.width = Math.round(W * e * dpr); lienzo.height = Math.round(H * e * dpr);
+  escala = lienzo.width / W;
+}
+window.addEventListener('resize', ajustar);
+
+// ---- Datos guardados --------------------------------------------------------
+let datos = { monedas: 0, personajes: { bolita: true, pepe: true }, gorros: { nada: true }, personaje: 'bolita', gorro: 'nada', mejores: {}, silencio: false };
+try { const g0 = JSON.parse(localStorage.getItem('peluda-datos') || '{}'); datos = { ...datos, ...g0, personajes: { ...datos.personajes, ...(g0.personajes || {}) }, gorros: { ...datos.gorros, ...(g0.gorros || {}) } }; } catch (_) {}
+const guardar = () => { try { localStorage.setItem('peluda-datos', JSON.stringify(datos)); } catch (_) {} };
+
+// ---- Corredores, gorritos, pistas y poderes -----------------------------------
+const PERSONAJES = [
+  { id: 'bolita', nombre: 'Bolita', especie: 'hamster', color: '#f5a35c', panza: '#ffe5c2', precio: 0 },
+  { id: 'pepe', nombre: 'Pepe', especie: 'rana', color: '#5fcf6a', panza: '#dcf8b4', precio: 0 },
+  { id: 'chispa', nombre: 'Chispa', especie: 'zorro', color: '#ff7b3a', panza: '#fff2e2', precio: 60 },
+  { id: 'mora', nombre: 'Mora', especie: 'conejo', color: '#b48cff', panza: '#f2e9ff', precio: 80 },
+  { id: 'trueno', nombre: 'Trueno', especie: 'mapache', color: '#8d95a8', panza: '#e7e9f0', precio: 100 },
+  { id: 'coco', nombre: 'Coco', especie: 'oso', color: '#a96b3e', panza: '#f2d1a8', precio: 120 },
+];
+const GORROS = [
+  { id: 'nada', nombre: 'Sin gorro', precio: 0 },
+  { id: 'gorra', nombre: 'Gorra', precio: 30 },
+  { id: 'flor', nombre: 'Flor', precio: 40 },
+  { id: 'vaquero', nombre: 'Vaquero', precio: 60 },
+  { id: 'corona', nombre: 'Corona', precio: 90 },
+];
+const PISTAS = [
+  { id: 'bosque', nombre: 'Bosque Feliz', semilla: 11, cielo: ['#7fd3ff', '#e2f6ff'], lejos: '#86cf7c', cerca: '#3f9a4f', pasto: '#62d05a', tierra: '#9a6a3e', obst: 'tronco', charco: 'lodo' },
+  { id: 'desierto', nombre: 'Desierto Dorado', semilla: 27, cielo: ['#ffc46b', '#fff1cf'], lejos: '#efc07a', cerca: '#d48d47', pasto: '#f4cf7e', tierra: '#c48646', obst: 'cactus', charco: 'arena' },
+  { id: 'nieve', nombre: 'Montaña Nevada', semilla: 43, cielo: ['#9fd2ff', '#f0f9ff'], lejos: '#d9eaf7', cerca: '#8fb9da', pasto: '#ffffff', tierra: '#b7cde1', obst: 'muneco', charco: 'hielo' },
+  { id: 'castillo', nombre: 'Castillo Embrujado', semilla: 59, cielo: ['#2f2361', '#7b4fa8'], lejos: '#2a1f4f', cerca: '#4a3274', pasto: '#8a62c4', tierra: '#4a3570', obst: 'calabaza', charco: 'telarana' },
+];
+const PODERES = {
+  cohete: { ico: '🚀', nombre: 'Cohete' },
+  rayo: { ico: '⚡', nombre: 'Rayo' },
+  escudo: { ico: '🛡️', nombre: 'Escudo' },
+  cascara: { ico: '🍌', nombre: 'Cáscara' },
+  martillo: { ico: '🔨', nombre: 'Martillo' },
+};
+const LARGO = 6000;                      // distancia hasta la meta
+const GRAVEDAD = 1900, SALTO = -650, VEL = 255;
+const PREMIO = [30, 20, 12, 6];          // monedas por lugar
+
+// =====================================================================
+// Sonido: efectos sintetizados + música de licencia libre (CC0, Kenney)
+// =====================================================================
+const Sonido = {
+  ctx: null,
+  iniciar() {
+    if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
+    const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
+    const c = this.ctx = new AC();
+    this.maestro = c.createGain(); this.maestro.gain.value = datos.silencio ? 0 : 0.7; this.maestro.connect(c.destination);
+    this.musica = c.createGain(); this.musica.gain.value = 0.3; this.musica.connect(this.maestro);
+    this.ruidoBuf = c.createBuffer(1, c.sampleRate, c.sampleRate);
+    const d = this.ruidoBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    fetch('sonidos/musica.mp3').then((r) => r.ok ? r.arrayBuffer() : Promise.reject())
+      .then((b) => new Promise((ok, mal) => c.decodeAudioData(b, ok, mal)))
+      .then((buf) => { const s = c.createBufferSource(); s.buffer = buf; s.loop = true; s.connect(this.musica); s.start(); }).catch(() => {});
+  },
+  alternar() {
+    datos.silencio = !datos.silencio; guardar();
+    if (this.ctx) this.maestro.gain.setTargetAtTime(datos.silencio ? 0 : 0.7, this.ctx.currentTime, 0.05);
+    $('btn-sonido').textContent = datos.silencio ? '🔇' : '🔊';
+  },
+  tono(f, dur, { tipo = 'square', vol = 0.08, hasta = null, cuando = 0 } = {}) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime + cuando, o = this.ctx.createOscillator(), gn = this.ctx.createGain();
+    o.type = tipo; o.frequency.setValueAtTime(f, t); if (hasta) o.frequency.exponentialRampToValueAtTime(hasta, t + dur);
+    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(gn); gn.connect(this.maestro); o.start(t); o.stop(t + dur + 0.02);
+  },
+  ruido(dur, vol = 0.25, freq = 1200) {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime, s = this.ctx.createBufferSource(), f = this.ctx.createBiquadFilter(), gn = this.ctx.createGain();
+    s.buffer = this.ruidoBuf; f.type = 'bandpass'; f.frequency.setValueAtTime(freq, t);
+    gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    s.connect(f); f.connect(gn); gn.connect(this.maestro); s.start(t); s.stop(t + dur);
+  },
+  salto() { this.tono(320, 0.18, { tipo: 'triangle', hasta: 700, vol: 0.12 }); },
+  caja() { [660, 990].forEach((f, i) => this.tono(f, 0.12, { vol: 0.06, cuando: i * 0.07 })); },
+  moneda() { this.tono(1320, 0.06, { vol: 0.05 }); this.tono(1760, 0.12, { vol: 0.05, cuando: 0.05 }); },
+  golpe() { this.tono(200, 0.25, { tipo: 'sawtooth', hasta: 70, vol: 0.1 }); this.ruido(0.15, 0.2, 500); },
+  cohete() { this.ruido(0.8, 0.25, 900); this.tono(200, 0.8, { tipo: 'sawtooth', hasta: 600, vol: 0.05 }); },
+  rayo() { this.ruido(0.4, 0.35, 3000); this.tono(1500, 0.3, { hasta: 100, vol: 0.07 }); },
+  martillo() { this.tono(900, 0.4, { tipo: 'square', hasta: 300, vol: 0.06 }); this.ruido(0.25, 0.3, 2000); },
+  resbalon() { this.tono(800, 0.35, { tipo: 'sine', hasta: 200, vol: 0.12 }); },
+  resorte() { this.tono(200, 0.3, { tipo: 'sine', hasta: 1200, vol: 0.12 }); },
+  conteo(final) { this.tono(final ? 880 : 440, final ? 0.5 : 0.2, { vol: 0.1 }); },
+  meta() { [523, 659, 784, 1047, 1319].forEach((f, i) => this.tono(f, 0.25, { vol: 0.07, cuando: i * 0.1 })); },
+};
+$('btn-sonido').textContent = datos.silencio ? '🔇' : '🔊';
+$('btn-sonido').addEventListener('click', () => Sonido.alternar());
+document.addEventListener('pointerdown', () => Sonido.iniciar(), true);
+window.addEventListener('keydown', () => Sonido.iniciar(), true);
+
+// =====================================================================
+// Dibujo de los animalitos (sirve para la carrera, la tienda y el podio)
+// c: contexto; x, y: los pies; t: tiempo; e: { corre, aire, mareo, tam }
+// =====================================================================
+function dibujarAnimal(c, pj, gorro, x, y, t, e = {}) {
+  const tam = e.tam || 1, corre = e.corre && !e.aire && !e.mareo;
+  c.save(); c.translate(x, y); c.scale(tam, tam);
+  if (e.mareo) c.rotate(Math.sin(t * 18) * 0.25);           // tambaleándose
+  const bote = corre ? Math.abs(Math.sin(t * 16)) * 3 : 0;
+  c.translate(0, -bote);
+  c.lineWidth = 2.5; c.strokeStyle = TINTA; c.lineJoin = 'round';
+  const piel = pj.color, panza = pj.panza;
+  // Cola (detrás)
+  if (pj.especie === 'zorro') { c.beginPath(); c.ellipse(-16, -16, 11, 6, -0.6 + Math.sin(t * 16) * 0.2, 0, 7); c.fillStyle = piel; c.fill(); c.stroke(); c.beginPath(); c.arc(-24, -21, 3.5, 0, 7); c.fillStyle = '#fff'; c.fill(); }
+  if (pj.especie === 'mapache') { c.save(); c.translate(-14, -15); c.rotate(-0.7 + Math.sin(t * 16) * 0.2); for (let i = 0; i < 3; i++) { c.beginPath(); c.ellipse(-i * 6, 0, 4.5, 5, 0, 0, 7); c.fillStyle = i % 2 ? '#555b6b' : piel; c.fill(); c.stroke(); } c.restore(); }
+  if (pj.especie === 'conejo') { c.beginPath(); c.arc(-12, -14, 4.5, 0, 7); c.fillStyle = '#fff'; c.fill(); c.stroke(); }
+  // Piernas: se mueven al correr, recogidas en el aire
+  const p = corre ? Math.sin(t * 16) * 6 : 0;
+  c.fillStyle = piel;
+  for (const [dx, s] of [[-4, 1], [4, -1]]) {
+    c.beginPath(); c.ellipse(dx + p * s, e.aire ? -4 : -2, 4.5, 3.5, 0, 0, 7); c.fill(); c.stroke();
+  }
+  // Cuerpo con pancita
+  c.beginPath(); c.ellipse(0, -13, 11, 10, 0, 0, 7); c.fillStyle = piel; c.fill(); c.stroke();
+  c.beginPath(); c.ellipse(3, -11, 6, 6.5, 0, 0, 7); c.fillStyle = panza; c.fill();
+  // Bracito
+  c.beginPath(); c.ellipse(4 - p * 0.5, -14, 3, 5, 0.6, 0, 7); c.fillStyle = piel; c.fill(); c.stroke();
+  // Orejas (según la especie)
+  const hx = 5, hy = -29;
+  c.fillStyle = piel;
+  if (pj.especie === 'conejo') { for (const s of [-1, 1]) { c.beginPath(); c.ellipse(hx + s * 4 - 2, hy - 15, 3.5, 10, s * 0.2 - 0.2, 0, 7); c.fill(); c.stroke(); } }
+  else if (pj.especie === 'zorro' || pj.especie === 'mapache') { for (const s of [-1, 1]) { c.beginPath(); c.moveTo(hx + s * 9 - 3, hy - 4); c.lineTo(hx + s * 6, hy - 15); c.lineTo(hx + s * 2, hy - 7); c.closePath(); c.fill(); c.stroke(); } }
+  else if (pj.especie !== 'rana') { for (const s of [-1, 1]) { c.beginPath(); c.arc(hx + s * 7, hy - 8, pj.especie === 'oso' ? 5 : 4, 0, 7); c.fill(); c.stroke(); } }
+  // Cabeza
+  c.beginPath(); c.ellipse(hx, hy, 12, 11, 0, 0, 7); c.fillStyle = piel; c.fill(); c.stroke();
+  // Antifaz del mapache
+  if (pj.especie === 'mapache') { c.beginPath(); c.ellipse(hx + 2, hy - 1, 10, 4.5, 0, 0, 7); c.fillStyle = '#3d4150'; c.fill(); }
+  // Ojos (la rana los tiene arriba de la cabeza)
+  const ojoY = pj.especie === 'rana' ? hy - 10 : hy - 2;
+  for (const dx of [0, 7]) {
+    c.beginPath(); c.arc(hx + dx, ojoY, pj.especie === 'rana' ? 4.5 : 3.6, 0, 7); c.fillStyle = '#fff'; c.fill(); c.stroke();
+    c.beginPath(); c.arc(hx + dx + 1.2, ojoY + 0.4, e.mareo ? 1 : 1.8, 0, 7); c.fillStyle = TINTA; c.fill();
+  }
+  // Nariz, cachete y boca
+  c.beginPath(); c.arc(hx + 11, hy + 3, 2.2, 0, 7); c.fillStyle = TINTA; c.fill();
+  c.beginPath(); c.arc(hx - 4, hy + 4, 2.6, 0, 7); c.fillStyle = 'rgba(255,110,150,.5)'; c.fill();
+  c.beginPath(); c.arc(hx + 6, hy + 5, 3, 0.1, Math.PI - 0.3); c.stroke();
+  // Gorrito
+  dibujarGorro(c, gorro, hx, hy - 9);
+  c.restore();
+  // Estrellitas de mareo
+  if (e.mareo) { c.save(); c.font = '12px sans-serif'; c.textAlign = 'center'; for (let i = 0; i < 3; i++) { const a = t * 6 + i * 2.1; c.fillStyle = '#ffd23f'; c.fillText('★', x + Math.cos(a) * 14, y - 46 * tam + Math.sin(a) * 4); } c.restore(); }
+}
+function dibujarGorro(c, gorro, x, y) {
+  c.lineWidth = 2.5; c.strokeStyle = TINTA;
+  if (gorro === 'gorra') { c.beginPath(); c.arc(x, y + 2, 10, Math.PI, 0); c.fillStyle = '#ff4f5e'; c.fill(); c.stroke(); c.beginPath(); c.ellipse(x + 11, y + 1, 7, 2.5, 0, 0, 7); c.fill(); c.stroke(); }
+  if (gorro === 'flor') { for (let i = 0; i < 5; i++) { const a = i * 1.257; c.beginPath(); c.arc(x - 4 + Math.cos(a) * 4.5, y - 2 + Math.sin(a) * 4.5, 3.4, 0, 7); c.fillStyle = '#ff8cc6'; c.fill(); c.stroke(); } c.beginPath(); c.arc(x - 4, y - 2, 2.6, 0, 7); c.fillStyle = '#ffd23f'; c.fill(); }
+  if (gorro === 'vaquero') { c.beginPath(); c.ellipse(x, y + 2, 17, 4, 0, 0, 7); c.fillStyle = '#b5763f'; c.fill(); c.stroke(); c.beginPath(); c.roundRect(x - 8, y - 9, 16, 11, 4); c.fill(); c.stroke(); }
+  if (gorro === 'corona') { c.beginPath(); c.moveTo(x - 9, y + 2); c.lineTo(x - 9, y - 7); c.lineTo(x - 4, y - 2); c.lineTo(x, y - 10); c.lineTo(x + 4, y - 2); c.lineTo(x + 9, y - 7); c.lineTo(x + 9, y + 2); c.closePath(); c.fillStyle = '#ffd23f'; c.fill(); c.stroke(); }
+}
+
+// =====================================================================
+// Generar la pista (siempre igual para cada semilla)
+// =====================================================================
+function aleatorio(semilla) {                // generador con semilla (mulberry32)
+  let a = semilla >>> 0;
+  return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+let pista = null;                            // datos de la pista en curso
+function generarPista(def) {
+  const r = aleatorio(def.semilla);
+  const suelo = [], plataformas = [], obstaculos = [], cajas = [], monedas = [], peligros = [];
+  let x = 0, y = 290;
+  suelo.push({ x0: -500, x1: 800, y }); x = 800;
+  let proxCaja = 650;
+  while (x < LARGO) {
+    const k = r();
+    if (k < 0.24) {                                         // hueco
+      const ancho = 75 + r() * 55;
+      peligros.push({ x, tipo: 'hueco' });
+      for (let i = 0; i < 4; i++) monedas.push({ x: x - 10 + (ancho + 20) * (i / 3), y: y - 70 - Math.sin(i / 3 * Math.PI) * 40, tomada: false });
+      x += ancho;
+      const largo = 320 + r() * 260; suelo.push({ x0: x, x1: x + largo, y }); x += largo;
+    } else if (k < 0.42) {                                  // escalón (sube o baja)
+      const ny = limitar(y + (r() < 0.5 ? -42 : 42), 220, 305);
+      if (ny < y) peligros.push({ x, tipo: 'muro' });
+      y = ny;
+      const largo = 280 + r() * 260; suelo.push({ x0: x, x1: x + largo, y }); x += largo;
+    } else {                                                // tramo plano con obstáculo
+      const largo = 340 + r() * 280; suelo.push({ x0: x, x1: x + largo, y });
+      const c = r();
+      if (c < 0.5) { const ox = x + largo * (0.45 + r() * 0.25); obstaculos.push({ x: ox, y, tipo: def.obst, w: 26, h: 28 }); peligros.push({ x: ox - 14, tipo: 'tronco' }); }
+      else if (c < 0.72) { const ox = x + largo * 0.4; obstaculos.push({ x: ox, y, tipo: def.charco, w: 90, h: 6 }); peligros.push({ x: ox - 45, tipo: 'charco' }); }
+      else if (c < 0.85) { const ox = x + largo * 0.5; obstaculos.push({ x: ox, y, tipo: 'resorte', w: 26, h: 12 }); }
+      if (r() < 0.4) {                                      // plataforma flotante con monedas
+        const px = x + 80, py = y - 95; plataformas.push({ x0: px, x1: px + 150, y: py });
+        for (let i = 0; i < 5; i++) monedas.push({ x: px + 15 + i * 30, y: py - 20, tomada: false });
+      }
+      x += largo;
+    }
+    while (proxCaja < x - 100) {                            // cajas de poder cada ~650 px
+      const s = suelo.find((q) => proxCaja >= q.x0 + 30 && proxCaja <= q.x1 - 30);
+      if (s) cajas.push({ x: proxCaja, y: s.y - 62, espera: 0 });
+      proxCaja += 600 + r() * 150;
+    }
+  }
+  suelo.push({ x0: x, x1: LARGO + 1200, y });
+  return { def, suelo, plataformas, obstaculos, cajas, monedas, peligros, trampas: [] };
+}
+// Suelo bajo una x (o null si hay hueco)
+const sueloEn = (x) => pista.suelo.find((s) => x >= s.x0 && x <= s.x1) || null;
+
+// =====================================================================
+// Corredores
+// =====================================================================
+let corredores = [], yo = null, estado = 'menu', tCarrera = 0, conteo = 0, tFin = 0, terminados = [];
+let camX = 0, temblor = 0, destellos = [], textos = [], martillos = [], monedasCarrera = 0;
+function crearCorredor(pj, gorro, esJugador, habilidad) {
+  return { pj, gorro, esJugador, habilidad, x: 60, y: 290, vx: 0, vy: 0, enSuelo: true, mareo: 0, cohete: 0, escudo: 0,
+    poder: null, tPoder: 0, cayendo: 0, golpeados: new Set(), peligro: null, saltara: false, atorado: 0, meta: null, lento: 1 };
+}
+function empezarCarrera(idPista) {
+  pista = generarPista(PISTAS.find((p) => p.id === idPista));
+  const mio = PERSONAJES.find((p) => p.id === datos.personaje);
+  yo = crearCorredor(mio, datos.gorro, true, 1);
+  // Tres rivales distintos a ti, con gorritos al azar y habilidad diferente
+  const otros = PERSONAJES.filter((p) => p.id !== mio.id).sort(() => Math.random() - 0.5).slice(0, 3);
+  corredores = [yo, ...otros.map((p, i) => crearCorredor(p, elegir(GORROS).id, false, [0.93, 0.86, 0.78][i]))];
+  corredores.forEach((c, i) => { c.x = 70 + i * 26; });
+  estado = 'conteo'; conteo = 3.5; tCarrera = 0; tFin = 0; terminados = []; monedasCarrera = 0;
+  destellos = []; textos = []; martillos = []; temblor = 0;
+  for (const id of ['portada', 'pistas', 'tienda', 'resultados', 'pausa']) $(id).hidden = true;
+  $('controles').hidden = false;
+  $('girar').hidden = !matchMedia('(orientation: portrait)').matches;
+  pintarPoder();
+}
+
+// ---- Saltar y usar poderes ----
+function saltar(c) {
+  if (estado !== 'carrera' || c.mareo > 0 || c.cayendo || !c.enSuelo) return;
+  c.vy = SALTO; c.enSuelo = false;
+  if (c.esJugador) Sonido.salto();
+}
+function flotante(x, y, texto, color = '#fff') { textos.push({ x, y, texto, color, vida: 1 }); }
+function marear(c, seg, x, y) {
+  if (c.escudo > 0) { c.escudo = 0; flotante(c.x, c.y - 50, '¡Escudo!', '#7fd6ff'); return false; }
+  if (c.cohete > 0) return false;
+  c.mareo = Math.max(c.mareo, seg); c.vx = 0;
+  if (c.esJugador) temblor = 8;
+  return true;
+}
+function usarPoder(c) {
+  if (estado !== 'carrera' || !c.poder || c.cayendo) return;
+  const p = c.poder; c.poder = null;
+  const adelante = corredores.filter((o) => o !== c && o.x > c.x && !o.meta);
+  if (p === 'cohete') { c.cohete = 2.2; c.mareo = 0; Sonido.cohete(); }
+  else if (p === 'escudo') { c.escudo = 7; Sonido.caja(); }
+  else if (p === 'cascara') { pista.trampas.push({ x: c.x - 40, y: (sueloEn(c.x - 40) || { y: c.y }).y, dueno: c }); }
+  else if (p === 'rayo') {
+    Sonido.rayo(); destellos.push({ vida: 0.35 });
+    for (const o of adelante) if (marear(o, 1.3)) flotante(o.x, o.y - 50, '⚡', '#ffd23f');
+  } else if (p === 'martillo') {
+    const blanco = adelante.sort((a, b) => a.x - b.x)[0];
+    if (blanco) { martillos.push({ blanco, t: 0.7 }); Sonido.martillo(); }
+  }
+  if (c.esJugador) pintarPoder();
+}
+// Poder al tocar una caja: los que van atrás reciben poderes más fuertes
+function poderAlAzar(c) {
+  const lugar = lugarDe(c);
+  const bolsa = lugar === 1 ? ['escudo', 'cascara', 'cascara', 'martillo', 'escudo'] : lugar >= 3 ? ['cohete', 'cohete', 'rayo', 'rayo', 'martillo'] : ['cohete', 'rayo', 'escudo', 'cascara', 'martillo'];
+  return elegir(bolsa);
+}
+const lugarDe = (c) => 1 + corredores.filter((o) => o !== c && (o.meta !== null ? (c.meta === null || o.meta < c.meta) : (c.meta === null && o.x > c.x))).length;
+
+// ---- Inteligencia de los rivales ----
+function pensar(c, dt) {
+  // Siguiente peligro adelante
+  const h = pista.peligros.find((q) => q.x > c.x - 4);
+  if (h && h !== c.peligro) { c.peligro = h; c.saltara = h.tipo === 'charco' ? Math.random() < 0.5 : Math.random() < c.habilidad; }
+  if (h && c.saltara && c.enSuelo) {
+    const dist = h.x - c.x, antes = h.tipo === 'hueco' ? c.vx * 0.12 + 4 : c.vx * 0.2 + 8;
+    if (dist < antes && dist > -2) saltar(c);
+  }
+  // Atorado frente a un escalón: brinca de todos modos
+  if (c.atorado > 0.35) saltar(c);
+  // Usa su poder después de un ratito
+  if (c.poder) {
+    c.tPoder -= dt;
+    const hayAdelante = corredores.some((o) => o !== c && o.x > c.x && !o.meta);
+    const hayAtras = corredores.some((o) => o !== c && o.x < c.x && c.x - o.x < 400);
+    const sirve = { rayo: hayAdelante, martillo: hayAdelante, cascara: hayAtras, cohete: true, escudo: true }[c.poder];
+    if (c.tPoder <= 0 && sirve) usarPoder(c);
+  }
+}
+
+// ---- Física de un corredor ----
+function mover(c, dt) {
+  if (c.meta !== null) { c.vx = Math.max(0, c.vx - 300 * dt); }
+  if (c.cayendo) {                                           // se cayó en un hueco: reaparece adelante
+    c.cayendo -= dt; c.y += 500 * dt;
+    if (c.cayendo <= 0) {
+      c.cayendo = 0;
+      const s = pista.suelo.find((q) => q.x1 > c.x + 10 && q.x0 > c.x - 200) || sueloEn(c.x);
+      c.x = Math.max(c.x, s.x0 + 25); c.y = s.y; c.vy = 0; c.enSuelo = true; c.mareo = 0.4; c.vx = 0;
+    }
+    return;
+  }
+  c.mareo = Math.max(0, c.mareo - dt); c.cohete = Math.max(0, c.cohete - dt); c.escudo = Math.max(0, c.escudo - dt);
+  // Velocidad deseada: los rivales se ajustan un poco a ti para que la carrera sea pareja
+  let meta = VEL * (c.esJugador ? 1 : 0.94 + c.habilidad * 0.08);
+  if (!c.esJugador && c.meta === null) { const d = c.x - yo.x; if (d < -350) meta *= 1.1; if (d > 450) meta *= 0.9; }
+  if (c.cohete > 0) meta *= 1.75;
+  meta *= c.lento; c.lento = 1;
+  if (c.mareo > 0) meta = 0;
+  if (c.meta !== null) meta = 0;
+  c.vx += limitar(meta - c.vx, -900 * dt, 420 * dt);
+  // Avanzar con choque contra escalones
+  let nx = c.x + c.vx * dt;
+  const s = sueloEn(nx + 10);
+  if (s && s.y < c.y - 14 && c.x + 10 < s.x0 + 2) { nx = s.x0 - 11; c.vx = 0; }
+  c.x = nx;
+  // ¿Está pegado a un escalón más alto? (los rivales brincan si se quedan atorados)
+  const frente = sueloEn(c.x + 12);
+  c.atorado = frente && frente.y < c.y - 14 && c.enSuelo ? c.atorado + dt : 0;
+  // Caer y aterrizar en el suelo o en plataformas
+  c.vy += GRAVEDAD * dt;
+  const ny = c.y + c.vy * dt;
+  let apoyo = null;
+  const sb = sueloEn(c.x); if (sb && c.y <= sb.y + 1 && ny >= sb.y) apoyo = sb.y;
+  for (const p of pista.plataformas) if (c.x >= p.x0 && c.x <= p.x1 && c.y <= p.y + 1 && ny >= p.y && (apoyo === null || p.y < apoyo)) apoyo = p.y;
+  if (c.vy >= 0 && apoyo !== null) { c.y = apoyo; c.vy = 0; c.enSuelo = true; }
+  else { c.y = ny; c.enSuelo = false; }
+  if (c.y > H + 40) { c.cayendo = 0.8; if (c.esJugador) { Sonido.golpe(); flotante(c.x, 250, '¡Uy!', '#ff6fa8'); } }
+  // Obstáculos
+  for (const o of pista.obstaculos) {
+    if (Math.abs(c.x - o.x) > o.w / 2 + 8) continue;
+    if (o.tipo === 'resorte') { if (c.enSuelo && Math.abs(c.y - o.y) < 2) { c.vy = -980; c.enSuelo = false; if (c.esJugador) Sonido.resorte(); } continue; }
+    if (o.h <= 6) {                                       // charcos: lodo, arena, telaraña (lentos) o hielo (rápido)
+      if (c.enSuelo && Math.abs(c.y - o.y) < 2) c.lento = o.tipo === 'hielo' ? 1.35 : 0.5;
+      continue;
+    }
+    if (c.y > o.y - o.h + 4 && !c.golpeados.has(o)) {      // chocó con el tronco/cactus/etc.
+      c.golpeados.add(o);
+      if (c.cohete <= 0) { marear(c, 0.55); c.x -= 12; if (c.esJugador) Sonido.golpe(); }
+    }
+  }
+  // Cáscaras en el piso
+  for (const tr of pista.trampas) if (!tr.usada && tr.dueno !== c && Math.abs(c.x - tr.x) < 14 && c.enSuelo && Math.abs(c.y - tr.y) < 3) {
+    tr.usada = true;
+    if (marear(c, 1) && c.esJugador) Sonido.resbalon();
+  }
+  // Cajas de poder
+  for (const b of pista.cajas) if (b.espera <= 0 && !c.poder && Math.abs(c.x - b.x) < 20 && Math.abs(c.y - 18 - b.y) < 28) {
+    b.espera = 2.5; c.poder = poderAlAzar(c); c.tPoder = 0.8 + Math.random() * 2.5;
+    if (c.esJugador) { Sonido.caja(); pintarPoder(); flotante(c.x, c.y - 56, PODERES[c.poder].ico + ' ' + PODERES[c.poder].nombre, '#fff'); }
+  }
+  // Monedas (solo las juntas tú)
+  if (c.esJugador) for (const m of pista.monedas) if (!m.tomada && Math.abs(c.x - m.x) < 16 && Math.abs(c.y - 18 - m.y) < 24) { m.tomada = true; monedasCarrera++; Sonido.moneda(); }
+  // ¡Meta!
+  if (c.meta === null && c.x >= LARGO) {
+    c.meta = tCarrera; terminados.push(c);
+    if (c.esJugador) { Sonido.meta(); tFin = 2; }
+  }
+}
+
+function actualizar(dt) {
+  for (const d of destellos) d.vida -= dt; destellos = destellos.filter((d) => d.vida > 0);
+  for (const t of textos) { t.vida -= dt; t.y -= 30 * dt; } textos = textos.filter((t) => t.vida > 0);
+  temblor = Math.max(0, temblor - dt * 30);
+  if (estado === 'conteo') {
+    const antes = Math.ceil(conteo); conteo -= dt;
+    if (Math.ceil(conteo) !== antes && antes <= 3 && antes > 0) Sonido.conteo(false);
+    if (conteo <= 0) { estado = 'carrera'; Sonido.conteo(true); }
+  }
+  if (estado !== 'carrera') { camX = limitar(yo ? yo.x - W * 0.3 : 0, -100, LARGO + 400); return; }
+  tCarrera += dt;
+  for (const b of pista.cajas) b.espera = Math.max(0, b.espera - dt);
+  for (const c of corredores) { if (!c.esJugador && c.meta === null) pensar(c, dt); mover(c, dt); }
+  // Martillos que caen sobre el de adelante
+  for (const m of martillos) { m.t -= dt; if (m.t <= 0) { if (marear(m.blanco, 1.5)) { flotante(m.blanco.x, m.blanco.y - 50, '¡PUM!', '#ff6fa8'); if (m.blanco.esJugador) temblor = 12; } } }
+  martillos = martillos.filter((m) => m.t > 0);
+  camX += (yo.x - W * 0.3 - camX) * Math.min(1, dt * 8);
+  // Después de que llegas, 2 segundos de festejo y luego el podio
+  if (yo.meta !== null && (tFin -= dt) <= 0) terminarCarrera();
+}
+
+// =====================================================================
+// Dibujo de la carrera
+// =====================================================================
+function fondo(def, t) {
+  const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, def.cielo[0]); gr.addColorStop(1, def.cielo[1]);
+  g.fillStyle = gr; g.fillRect(0, 0, W, H);
+  // Sol o luna
+  g.beginPath(); g.arc(W - 90, 70, 30, 0, 7); g.fillStyle = def.id === 'castillo' ? '#fff3c4' : '#fff6a8'; g.fill();
+  // Nubes que pasan lento
+  if (def.id !== 'castillo') { g.fillStyle = 'rgba(255,255,255,.85)'; for (let i = 0; i < 4; i++) { const x = ((i * 230 - camX * 0.1) % (W + 200) + W + 200) % (W + 200) - 100; nube(x, 50 + (i % 2) * 30); } }
+  // Montañas lejanas (se mueven lento) y cercanas (más rápido)
+  colinas(def.lejos, 0.2, 200, 50, 180);
+  colinas(def.cerca, 0.45, 240, 35, 120);
+  // Detalles cercanos según la pista
+  for (let i = -1; i < 7; i++) {
+    const base = Math.floor(camX * 0.45 / 120) + i, x = base * 120 - camX * 0.45 + 40;
+    const r = (base * 9301 + 49297) % 233280 / 233280;
+    if (r < 0.5) continue;
+    if (def.id === 'bosque') arbol(x, 250, '#2f7d3e');
+    if (def.id === 'desierto') cactusFondo(x, 252);
+    if (def.id === 'nieve') pino(x, 252);
+    if (def.id === 'castillo') torre(x, 250);
+  }
+}
+function nube(x, y) { g.beginPath(); g.arc(x, y, 16, 0, 7); g.arc(x + 18, y - 8, 20, 0, 7); g.arc(x + 40, y, 15, 0, 7); g.fill(); }
+function colinas(color, f, base, alto, ancho) {
+  g.fillStyle = color; g.beginPath(); g.moveTo(0, H);
+  for (let x = 0; x <= W; x += 10) { const wx = x + camX * f; g.lineTo(x, base - Math.abs(Math.sin(wx / ancho)) * alto - Math.sin(wx / (ancho * 0.37)) * alto * 0.2); }
+  g.lineTo(W, H); g.closePath(); g.fill();
+}
+function arbol(x, y, c) { g.fillStyle = '#6b4426'; g.fillRect(x - 4, y - 30, 8, 30); g.fillStyle = c; g.beginPath(); g.arc(x, y - 42, 20, 0, 7); g.arc(x - 14, y - 30, 14, 0, 7); g.arc(x + 14, y - 30, 14, 0, 7); g.fill(); }
+function pino(x, y) { g.fillStyle = '#5b86a8'; g.beginPath(); g.moveTo(x, y - 70); g.lineTo(x + 22, y); g.lineTo(x - 22, y); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.moveTo(x, y - 70); g.lineTo(x + 8, y - 45); g.lineTo(x - 8, y - 45); g.fill(); }
+function cactusFondo(x, y) { g.fillStyle = '#b77a3e'; g.fillRect(x - 5, y - 40, 10, 40); g.fillRect(x - 15, y - 28, 10, 6); g.fillRect(x - 15, y - 38, 6, 14); }
+function torre(x, y) { g.fillStyle = '#2a1f4f'; g.fillRect(x - 14, y - 80, 28, 80); g.beginPath(); g.moveTo(x - 18, y - 80); g.lineTo(x, y - 110); g.lineTo(x + 18, y - 80); g.fill(); g.fillStyle = '#ffd23f'; g.fillRect(x - 4, y - 60, 8, 10); }
+
+function sueloDibujo(def) {
+  for (const s of pista.suelo) {
+    const x0 = s.x0 - camX, x1 = s.x1 - camX;
+    if (x1 < -20 || x0 > W + 20) continue;
+    g.fillStyle = def.tierra; g.fillRect(x0, s.y, x1 - x0, H - s.y + 10);
+    g.fillStyle = 'rgba(0,0,0,.08)'; for (let x = Math.ceil(s.x0 / 40) * 40; x < s.x1; x += 40) g.fillRect(x - camX, s.y + 22 + (x % 80 ? 10 : 30), 14, 6);
+    g.fillStyle = def.pasto; g.beginPath(); g.roundRect(x0 - 2, s.y - 4, x1 - x0 + 4, 14, 6); g.fill();
+    g.strokeStyle = TINTA; g.lineWidth = 3; g.beginPath(); g.moveTo(x0, H + 5); g.lineTo(x0, s.y); g.lineTo(x1, s.y); g.lineTo(x1, H + 5); g.stroke();
+  }
+  for (const p of pista.plataformas) {
+    const x0 = p.x0 - camX; if (x0 > W || x0 + 150 < 0) continue;
+    g.fillStyle = def.tierra; g.beginPath(); g.roundRect(x0, p.y, p.x1 - p.x0, 18, 8); g.fill(); g.lineWidth = 3; g.strokeStyle = TINTA; g.stroke();
+    g.fillStyle = def.pasto; g.fillRect(x0 + 4, p.y + 2, p.x1 - p.x0 - 8, 5);
+  }
+}
+function obstaculoDibujo(o) {
+  const x = o.x - camX, y = o.y; if (x < -60 || x > W + 60) return;
+  g.lineWidth = 2.5; g.strokeStyle = TINTA;
+  if (o.tipo === 'tronco') { g.fillStyle = '#9a6a3e'; g.beginPath(); g.roundRect(x - 14, y - 26, 28, 26, 6); g.fill(); g.stroke(); g.beginPath(); g.ellipse(x + 8, y - 13, 5, 11, 0, 0, 7); g.fillStyle = '#d9a66b'; g.fill(); g.stroke(); }
+  if (o.tipo === 'cactus') { g.fillStyle = '#4fae5a'; g.beginPath(); g.roundRect(x - 6, y - 32, 12, 32, 6); g.fill(); g.stroke(); g.beginPath(); g.roundRect(x - 16, y - 24, 8, 14, 4); g.fill(); g.stroke(); g.beginPath(); g.roundRect(x + 8, y - 28, 8, 14, 4); g.fill(); g.stroke(); }
+  if (o.tipo === 'muneco') { g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y - 10, 11, 0, 7); g.fill(); g.stroke(); g.beginPath(); g.arc(x, y - 27, 8, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#ff8a3d'; g.beginPath(); g.moveTo(x + 4, y - 27); g.lineTo(x + 13, y - 25); g.lineTo(x + 4, y - 24); g.fill(); g.fillStyle = TINTA; g.fillRect(x - 3, y - 30, 2, 2); }
+  if (o.tipo === 'calabaza') { g.fillStyle = '#ff8a2a'; g.beginPath(); g.ellipse(x, y - 12, 15, 12, 0, 0, 7); g.fill(); g.stroke(); g.fillStyle = '#ffd23f'; g.beginPath(); g.moveTo(x - 8, y - 15); g.lineTo(x - 4, y - 19); g.lineTo(x - 1, y - 15); g.fill(); g.beginPath(); g.moveTo(x + 2, y - 15); g.lineTo(x + 6, y - 19); g.lineTo(x + 9, y - 15); g.fill(); g.fillStyle = '#3e8a3a'; g.fillRect(x - 2, y - 28, 4, 6); }
+  if (o.h <= 6) {
+    const col = { lodo: '#6b4426', arena: '#e0a95a', hielo: '#bfe9ff', telarana: '#d9d0f2' }[o.tipo];
+    g.fillStyle = col; g.beginPath(); g.ellipse(x, y + 1, o.w / 2, 5, 0, 0, 7); g.fill(); g.stroke();
+    if (o.tipo === 'hielo') { g.fillStyle = '#fff'; g.fillRect(x - 20, y - 1, 12, 2); }
+  }
+  if (o.tipo === 'resorte') { g.fillStyle = '#ff6fa8'; g.beginPath(); g.roundRect(x - 13, y - 12, 26, 7, 3); g.fill(); g.stroke(); g.strokeStyle = '#9aa3b5'; g.beginPath(); for (let i = 0; i < 4; i++) { g.moveTo(x - 8, y - 4 + i * 0); g.lineTo(x + 8, y - 1 - i * 2.5); } g.stroke(); }
+}
+function dibujarCarrera(t) {
+  g.setTransform(escala, 0, 0, escala, 0, 0);
+  if (temblor > 0) g.translate((Math.random() - 0.5) * temblor, (Math.random() - 0.5) * temblor);
+  const def = pista.def;
+  fondo(def, t);
+  sueloDibujo(def);
+  // Meta: arco a cuadros
+  const mx = LARGO - camX;
+  if (mx > -60 && mx < W + 60) {
+    const s = sueloEn(LARGO);
+    g.fillStyle = TINTA; g.fillRect(mx - 34, s.y - 120, 6, 120); g.fillRect(mx + 28, s.y - 120, 6, 120);
+    for (let i = 0; i < 8; i++) for (let j = 0; j < 2; j++) { g.fillStyle = (i + j) % 2 ? '#fff' : TINTA; g.fillRect(mx - 34 + i * 8.5, s.y - 132 + j * 8, 8.5, 8); }
+    g.font = '16px "Lilita One", sans-serif'; g.textAlign = 'center'; g.fillStyle = '#fff'; g.strokeStyle = TINTA; g.lineWidth = 3; g.strokeText('META', mx, s.y - 140); g.fillText('META', mx, s.y - 140);
+  }
+  for (const o of pista.obstaculos) obstaculoDibujo(o);
+  // Cáscaras
+  g.font = '20px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'alphabetic';
+  for (const tr of pista.trampas) if (!tr.usada) { g.fillStyle = '#000'; g.fillText('🍌', tr.x - camX, tr.y); }
+  // Cajas de poder que flotan
+  for (const b of pista.cajas) {
+    const x = b.x - camX; if (x < -30 || x > W + 30 || b.espera > 0) continue;
+    const y = b.y + Math.sin(t * 3 + b.x) * 4;
+    g.save(); g.translate(x, y); g.rotate(Math.sin(t * 2 + b.x) * 0.1);
+    g.beginPath(); g.roundRect(-13, -13, 26, 26, 6); g.fillStyle = '#ff6fa8'; g.fill(); g.lineWidth = 3; g.strokeStyle = TINTA; g.stroke();
+    g.fillStyle = '#fff'; g.font = '18px "Lilita One", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 0, 1);
+    g.restore();
+  }
+  // Monedas que giran
+  for (const m of pista.monedas) {
+    const x = m.x - camX; if (m.tomada || x < -20 || x > W + 20) continue;
+    const giro = Math.abs(Math.cos(t * 4 + m.x * 0.01));
+    g.beginPath(); g.ellipse(x, m.y, 7 * giro + 1, 7, 0, 0, 7); g.fillStyle = '#ffd23f'; g.fill(); g.lineWidth = 2; g.strokeStyle = '#b07a00'; g.stroke();
+  }
+  // Corredores (tú al final para que siempre se te vea)
+  for (const c of [...corredores.filter((c) => !c.esJugador), yo]) {
+    const x = c.x - camX; if (x < -40 || x > W + 40) continue;
+    if (c.cohete > 0) { g.fillStyle = 'rgba(255,170,60,.8)'; for (let i = 0; i < 4; i++) { g.beginPath(); g.arc(x - 18 - i * 9, c.y - 14 + Math.sin(t * 40 + i) * 3, 7 - i, 0, 7); g.fill(); } }
+    if (!c.cayendo || c.y < H) dibujarAnimal(g, c.pj, c.gorro, x, c.y, t, { corre: estado === 'carrera' && c.meta === null, aire: !c.enSuelo, mareo: c.mareo > 0 });
+    if (c.escudo > 0) { g.beginPath(); g.arc(x + 2, c.y - 20, 26, 0, 7); g.fillStyle = 'rgba(127,214,255,.25)'; g.fill(); g.lineWidth = 2.5; g.strokeStyle = '#7fd6ff'; g.stroke(); }
+    // Flechita sobre ti
+    if (c.esJugador) { g.fillStyle = '#ffd23f'; g.strokeStyle = TINTA; g.lineWidth = 2; g.beginPath(); g.moveTo(x - 6, c.y - 62); g.lineTo(x + 6, c.y - 62); g.lineTo(x, c.y - 54); g.closePath(); g.fill(); g.stroke(); }
+  }
+  // Martillos cayendo (con sombra de aviso)
+  for (const m of martillos) {
+    const x = m.blanco.x - camX, yb = m.blanco.y;
+    g.fillStyle = 'rgba(0,0,0,.25)'; g.beginPath(); g.ellipse(x, yb + 2, 16 * (1 - m.t), 4, 0, 0, 7); g.fill();
+    g.font = '30px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.fillStyle = '#000'; g.textAlign = 'center';
+    g.fillText('🔨', x, yb - 40 - m.t * 260);
+  }
+  // Textos flotantes
+  g.font = '18px "Lilita One", sans-serif'; g.textAlign = 'center';
+  for (const tx of textos) { g.globalAlpha = Math.min(1, tx.vida * 2); g.lineWidth = 4; g.strokeStyle = TINTA; g.strokeText(tx.texto, tx.x - camX, tx.y); g.fillStyle = tx.color; g.fillText(tx.texto, tx.x - camX, tx.y); }
+  g.globalAlpha = 1;
+  // Destello del rayo
+  for (const d of destellos) { g.fillStyle = `rgba(255,255,200,${d.vida * 1.6})`; g.fillRect(-20, -20, W + 40, H + 40); }
+  hud(t);
+}
+function hud(t) {
+  g.setTransform(escala, 0, 0, escala, 0, 0);
+  // Barra de avance con las caritas de los 4
+  const x0 = 70, x1 = W - 120, y = 20;
+  g.fillStyle = 'rgba(255,255,255,.8)'; g.beginPath(); g.roundRect(x0 - 10, y - 9, x1 - x0 + 34, 18, 9); g.fill(); g.lineWidth = 2.5; g.strokeStyle = TINTA; g.stroke();
+  g.font = '12px sans-serif'; g.fillStyle = TINTA; g.textAlign = 'center'; g.fillText('🏁', x1 + 14, y + 5);
+  for (const c of [...corredores].sort((a, b) => (a.esJugador ? 1 : 0) - (b.esJugador ? 1 : 0))) {
+    const cx = x0 + (x1 - x0) * limitar(c.x / LARGO, 0, 1);
+    g.beginPath(); g.arc(cx, y, c.esJugador ? 8 : 6, 0, 7); g.fillStyle = c.pj.color; g.fill(); g.lineWidth = c.esJugador ? 3 : 2; g.strokeStyle = c.esJugador ? '#fff' : TINTA; g.stroke();
+  }
+  // Tu lugar
+  const l = lugarDe(yo);
+  g.font = '34px "Lilita One", sans-serif'; g.textAlign = 'left'; g.lineWidth = 5; g.strokeStyle = TINTA;
+  g.strokeText(`${l}º`, 12, 72); g.fillStyle = l === 1 ? '#ffd23f' : '#fff'; g.fillText(`${l}º`, 12, 72);
+  // Monedas de esta carrera y tiempo
+  g.font = '16px "Lilita One", sans-serif'; g.lineWidth = 4;
+  g.strokeText(`🪙 ${monedasCarrera}`, 12, 96); g.fillStyle = '#fff'; g.fillText(`🪙 ${monedasCarrera}`, 12, 96);
+  // Conteo
+  if (estado === 'conteo') {
+    const n = Math.ceil(conteo), texto = n > 3 ? '¿Listos?' : n > 0 ? String(n) : '¡YA!';
+    g.font = '72px "Lilita One", sans-serif'; g.textAlign = 'center'; g.lineWidth = 8;
+    g.strokeText(texto, W / 2, H / 2); g.fillStyle = '#ffd23f'; g.fillText(texto, W / 2, H / 2);
+  }
+  if (yo.meta !== null) {
+    g.font = '56px "Lilita One", sans-serif'; g.textAlign = 'center'; g.lineWidth = 8;
+    g.strokeText('¡META!', W / 2, H / 2); g.fillStyle = '#ffd23f'; g.fillText('¡META!', W / 2, H / 2);
+  }
+}
+
+// ---- Vista animada de la portada ----
+function dibujarPortada(t) {
+  const c = $('vista-portada').getContext('2d');
+  c.clearRect(0, 0, 320, 200);
+  c.fillStyle = '#62d05a'; c.beginPath(); c.roundRect(10, 150, 300, 40, 14); c.fill(); c.lineWidth = 3; c.strokeStyle = TINTA; c.stroke();
+  const pj = PERSONAJES.find((p) => p.id === datos.personaje);
+  dibujarAnimal(c, pj, datos.gorro, 160, 152 - Math.max(0, Math.sin(t * 3)) * 40, t, { corre: true, aire: Math.sin(t * 3) > 0.05, tam: 2.4 });
+}
+
+// =====================================================================
+// Fin de la carrera y resultados
+// =====================================================================
+function terminarCarrera() {
+  estado = 'resultados';
+  // Los que no llegaron se ordenan por lo que avanzaron
+  const resto = corredores.filter((c) => c.meta === null).sort((a, b) => b.x - a.x);
+  const orden = [...terminados, ...resto];
+  const lugar = orden.indexOf(yo) + 1;
+  const premio = PREMIO[lugar - 1] + monedasCarrera;
+  datos.monedas += premio;
+  const id = pista.def.id, nuevo = !datos.mejores[id] || yo.meta < datos.mejores[id];
+  if (nuevo) datos.mejores[id] = yo.meta;
+  guardar();
+  $('titulo-res').textContent = lugar === 1 ? '¡Ganaste! 🏆' : `Llegaste ${lugar}º`;
+  $('podio').innerHTML = orden.map((c, i) => `<div class="lugar${c.esJugador ? ' yo' : ''}"><span class="n">${['🥇', '🥈', '🥉', '4º'][i]}</span><canvas width="128" height="96" data-res="${i}"></canvas><b>${c.pj.nombre}${c.esJugador ? ' (tú)' : ''}</b><span>${c.meta !== null ? c.meta.toFixed(1) + ' s' : '—'}</span></div>`).join('');
+  orden.forEach((c, i) => { const cv = document.querySelector(`[data-res="${i}"]`).getContext('2d'); dibujarAnimal(cv, c.pj, c.gorro, 64, 88, 0, { tam: 2 }); });
+  $('premio').textContent = `+${premio} 🪙`;
+  $('tiempo-res').textContent = `Tu tiempo: ${yo.meta.toFixed(1)} s${nuevo ? ' · ¡Tu mejor tiempo en esta pista!' : ` · Mejor: ${datos.mejores[id].toFixed(1)} s`} · Monedas en la pista: ${monedasCarrera}`;
+  $('controles').hidden = true; $('girar').hidden = true;
+  $('resultados').hidden = false;
+}
+
+// =====================================================================
+// Menús: pistas y tienda
+// =====================================================================
+function irA(id) {
+  for (const s of ['portada', 'pistas', 'tienda', 'resultados', 'pausa']) $(s).hidden = s !== id;
+  $('controles').hidden = true; $('girar').hidden = true;
+  if (id !== 'pausa') estado = 'menu';
+  if (id === 'portada') $('monedas-portada').textContent = datos.monedas;
+  if (id === 'pistas') pintarPistas();
+  if (id === 'tienda') pintarTienda();
+}
+function pintarPistas() {
+  $('lista-pistas').innerHTML = PISTAS.map((p) => `<button class="tarjeta" type="button" data-pista="${p.id}"><canvas width="320" height="240" data-mini="${p.id}"></canvas><b>${p.nombre}</b><small>${datos.mejores[p.id] ? 'Mejor tiempo: ' + datos.mejores[p.id].toFixed(1) + ' s' : 'Sin correr todavía'}</small></button>`).join('');
+  // Mini dibujo de cada pista
+  for (const p of PISTAS) {
+    const c = document.querySelector(`[data-mini="${p.id}"]`).getContext('2d');
+    const gr = c.createLinearGradient(0, 0, 0, 240); gr.addColorStop(0, p.cielo[0]); gr.addColorStop(1, p.cielo[1]);
+    c.fillStyle = gr; c.fillRect(0, 0, 320, 240);
+    c.fillStyle = p.lejos; c.beginPath(); c.moveTo(0, 240); for (let x = 0; x <= 320; x += 10) c.lineTo(x, 150 - Math.abs(Math.sin(x / 60)) * 50); c.lineTo(320, 240); c.fill();
+    c.fillStyle = p.tierra; c.fillRect(0, 180, 320, 60); c.fillStyle = p.pasto; c.fillRect(0, 176, 320, 12);
+    dibujarAnimal(c, PERSONAJES.find((x) => x.id === datos.personaje), datos.gorro, 150, 180, 0.3, { corre: true, tam: 2.2 });
+  }
+}
+function pintarTienda() {
+  $('monedas-tienda').textContent = datos.monedas;
+  $('lista-personajes').innerHTML = PERSONAJES.map((p) => {
+    const tiene = datos.personajes[p.id], elegido = datos.personaje === p.id;
+    const boton = elegido ? '<button class="btn claro" type="button" disabled>Elegido</button>'
+      : tiene ? `<button class="btn verde" type="button" data-elegir="${p.id}">Elegir</button>`
+      : `<button class="btn" type="button" data-comprar="${p.id}" ${datos.monedas < p.precio ? 'disabled' : ''}>🪙 ${p.precio}</button>`;
+    return `<div class="tarjeta${elegido ? ' elegido' : ''}"><canvas width="240" height="180" data-pj="${p.id}"></canvas><b>${p.nombre}</b>${boton}</div>`;
+  }).join('');
+  $('lista-gorros').innerHTML = GORROS.map((x) => {
+    const tiene = datos.gorros[x.id], elegido = datos.gorro === x.id;
+    const boton = elegido ? '<button class="btn claro" type="button" disabled>Puesto</button>'
+      : tiene ? `<button class="btn verde" type="button" data-ponerse="${x.id}">Ponérselo</button>`
+      : `<button class="btn" type="button" data-gorro="${x.id}" ${datos.monedas < x.precio ? 'disabled' : ''}>🪙 ${x.precio}</button>`;
+    return `<div class="tarjeta${elegido ? ' elegido' : ''}"><canvas width="240" height="180" data-g="${x.id}"></canvas><b>${x.nombre}</b>${boton}</div>`;
+  }).join('');
+  const mio = PERSONAJES.find((p) => p.id === datos.personaje);
+  for (const p of PERSONAJES) dibujarAnimal(document.querySelector(`[data-pj="${p.id}"]`).getContext('2d'), p, datos.gorro, 120, 160, 0, { tam: 3 });
+  for (const x of GORROS) dibujarAnimal(document.querySelector(`[data-g="${x.id}"]`).getContext('2d'), mio, x.id, 120, 160, 0, { tam: 3 });
+}
+
+// ---- Toques en los menús ----
+let ultimaPista = 'bosque';
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  const d = b.dataset;
+  if (d.ir) irA(d.ir);
+  else if (d.pista) { ultimaPista = d.pista; empezarCarrera(d.pista); }
+  else if (d.comprar) { const p = PERSONAJES.find((x) => x.id === d.comprar); if (datos.monedas >= p.precio) { datos.monedas -= p.precio; datos.personajes[p.id] = true; datos.personaje = p.id; Sonido.caja(); guardar(); pintarTienda(); } }
+  else if (d.elegir) { datos.personaje = d.elegir; guardar(); pintarTienda(); }
+  else if (d.gorro) { const x = GORROS.find((q) => q.id === d.gorro); if (datos.monedas >= x.precio) { datos.monedas -= x.precio; datos.gorros[x.id] = true; datos.gorro = x.id; Sonido.caja(); guardar(); pintarTienda(); } }
+  else if (d.ponerse) { datos.gorro = d.ponerse; guardar(); pintarTienda(); }
+});
+$('btn-correr').addEventListener('click', () => irA('pistas'));
+$('btn-tienda').addEventListener('click', () => irA('tienda'));
+$('btn-como').addEventListener('click', () => { $('como').hidden = !$('como').hidden; });
+$('btn-revancha').addEventListener('click', () => empezarCarrera(ultimaPista));
+$('btn-seguir').addEventListener('click', () => { $('pausa').hidden = true; estado = estadoAntes; });
+$('btn-abandonar').addEventListener('click', () => irA('portada'));
+
+// ---- Controles de la carrera ----
+let estadoAntes = 'carrera';
+function pausar() { if (estado !== 'carrera' && estado !== 'conteo') return; estadoAntes = estado; estado = 'pausa'; $('pausa').hidden = false; }
+$('btn-pausa').addEventListener('pointerdown', (e) => { e.preventDefault(); pausar(); });
+$('btn-saltar').addEventListener('pointerdown', (e) => { e.preventDefault(); saltar(yo); });
+$('btn-poder').addEventListener('pointerdown', (e) => { e.preventDefault(); usarPoder(yo); });
+// Tocar la mitad derecha de la pista también salta
+lienzo.addEventListener('pointerdown', (e) => { const r = lienzo.getBoundingClientRect(); if (e.clientX - r.left > r.width / 2) saltar(yo); else usarPoder(yo); });
+window.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if ([' ', 'arrowup', 'w'].includes(k)) { e.preventDefault(); if (yo) saltar(yo); }
+  if (['x', 'z', 'shift', 'enter'].includes(k) && yo) usarPoder(yo);
+  if (k === 'p' || k === 'escape') { if (estado === 'pausa') { $('pausa').hidden = true; estado = estadoAntes; } else pausar(); }
+});
+document.addEventListener('visibilitychange', () => { if (document.hidden) pausar(); });
+function pintarPoder() {
+  const p = yo && yo.poder;
+  $('ico-poder').textContent = p ? PODERES[p].ico : '·';
+  $('btn-poder').classList.toggle('vacio', !p);
+}
+
+// =====================================================================
+// Bucle principal
+// =====================================================================
+let ultimo = performance.now();
+function bucle(ahora) {
+  requestAnimationFrame(bucle);
+  const dt = Math.min(0.033, (ahora - ultimo) / 1000); ultimo = ahora;
+  const t = ahora / 1000;
+  if (estado === 'conteo' || estado === 'carrera') { actualizar(dt); dibujarCarrera(t); }
+  else if (pista && (estado === 'pausa' || estado === 'resultados')) dibujarCarrera(t);
+  else { g.setTransform(escala, 0, 0, escala, 0, 0); const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#7fd3ff'); gr.addColorStop(1, '#e2f6ff'); g.fillStyle = gr; g.fillRect(0, 0, W, H); }
+  if (!$('portada').hidden) dibujarPortada(t);
+}
+$('monedas-portada').textContent = datos.monedas;
+ajustar();
+requestAnimationFrame(bucle);
+</script>
