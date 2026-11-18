@@ -63,3 +63,8 @@ shutil.copytree(raiz / 'naves' / 'sonidos', raiz / 'docs' / 'naves' / 'sonidos',
 generar('carrera/index.html', 'docs/carrera/index.html',
         'Carrera Peluda: corre, salta y usa poderes para ganarle a tres rivales.', '#8fd6ff')
 shutil.copytree(raiz / 'carrera' / 'sonidos', raiz / 'docs' / 'carrera' / 'sonidos', dirs_exist_ok=True)
+
+# Pipo Saltarín → https://verchdragon.github.io/vampiro/pipo/
+generar('pipo/index.html', 'docs/pipo/index.html',
+        'Pipo Saltarín: juego de plataformas. Salta, aplasta enemigos y recupera la campana.', '#9fe3ff')
+shutil.copytree(raiz / 'pipo' / 'sonidos', raiz / 'docs' / 'pipo' / 'sonidos', dirs_exist_ok=True)
